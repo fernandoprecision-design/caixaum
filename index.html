@@ -142,7 +142,7 @@
     ];
 
     const brl = (v) => 'R$ ' + (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const nowId = () => `${nowId()}${Math.random().toString(36).slice(2, 7)}`;
+    const nowId = () => `${Date.now()}${Math.random().toString(36).slice(2, 7)}`;
     const hasKw = (text, kw) => kw.length <= 4 ? (' ' + text.replace(/[^a-z0-9]+/g, ' ') + ' ').includes(' ' + kw + ' ') : text.includes(kw);
 
     function getLocalTodayStr() {
@@ -447,6 +447,7 @@
       const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('ALL');
       const [transactionViewMode, setTransactionViewMode] = useState('date');
       const [showCardPurchases, setShowCardPurchases] = useState(false);
+      const [pieChartMode, setPieChartMode] = useState('consumption'); // 'consumption' | 'cash'
 
       const [transactions, setTransactions] = useState([]);
       const [categories, setCategories] = useState(INITIAL_CATEGORIES);
@@ -1000,7 +1001,13 @@
         if (pieChartRef.current) {
           const expenseByCat = {};
           monthTransactions
-            .filter(t => t.type === 'expense' && t.category !== 'Pagamento de Fatura')
+            .filter(t => {
+              if (t.type !== 'expense') return false;
+              if (pieChartMode === 'cash') {
+                return !isCreditCardPurchase(t);
+              }
+              return t.category !== 'Pagamento de Fatura';
+            })
             .forEach(t => {
               expenseByCat[t.category] = (expenseByCat[t.category] || 0) + t.amount;
             });
@@ -1107,7 +1114,7 @@
             }
           });
         }
-      }, [activeTab, transactions, selectedMonth, categories, monthTransactions, recurringMerchants]);
+      }, [activeTab, transactions, selectedMonth, categories, monthTransactions, recurringMerchants, pieChartMode]);
 
       const translateFirebaseAuthError = (code) => {
         switch (code) {
@@ -1518,7 +1525,8 @@
         setImportPreviewData(null);
         setIsImportModalOpen(true);
       };
-const parseRawLinesToItems = (rows, docType) => {
+
+      const parseRawLinesToItems = (rows, docType) => {
         const parsedItems = [];
         const fallbackDate = docType === 'card_invoice' ? invoiceDueDate : `${selectedMonth}-01`;
 
@@ -2783,6 +2791,7 @@ const parseRawLinesToItems = (rows, docType) => {
               {saveStatus === 'saving' ? 'Salvando…' : saveStatus === 'saved' ? 'Salvo ✓' : 'Falha ao salvar — verifique a conexão e tente de novo'}
             </div>
           )}
+
           {/* Conteúdo */}
           <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
             {unpaidInvoiceReminder && unpaidInvoiceReminder.amount > 0 && (
@@ -2961,7 +2970,44 @@ const parseRawLinesToItems = (rows, docType) => {
 
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
                   <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                    <h3 class="font-bold text-slate-800 text-lg mb-4">Consumo do Mês por Categoria</h3>
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+                      <div>
+                        <h3 class="font-bold text-slate-800 text-lg">
+                          {pieChartMode === 'consumption' ? 'Consumo do Mês por Categoria' : 'Saídas de Caixa por Categoria'}
+                        </h3>
+                        <p class="text-[11px] text-slate-400">
+                          {pieChartMode === 'consumption'
+                            ? 'Detalha compras no cartão + gastos à vista (exclui fatura).'
+                            : 'Inclui Pagamento de Fatura + débito/PIX (exclui compras do cartão).'}
+                        </p>
+                      </div>
+                      <div class="inline-flex bg-slate-100 p-1 rounded-xl border border-slate-200 self-start sm:self-auto shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setPieChartMode('consumption')}
+                          class={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
+                            pieChartMode === 'consumption'
+                              ? 'bg-white text-emerald-700 shadow-sm'
+                              : 'text-slate-500 hover:text-slate-700'
+                          }`}
+                          title="Visão por competência: compras do cartão + despesas diretas"
+                        >
+                          Competência
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPieChartMode('cash')}
+                          class={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
+                            pieChartMode === 'cash'
+                              ? 'bg-white text-indigo-700 shadow-sm'
+                              : 'text-slate-500 hover:text-slate-700'
+                          }`}
+                          title="Visão de caixa: inclui Pagamento de Fatura e oculta compras do cartão"
+                        >
+                          Caixa (Fatura)
+                        </button>
+                      </div>
+                    </div>
                     <div class="h-64 relative">
                       <canvas ref={pieChartRef}></canvas>
                     </div>
