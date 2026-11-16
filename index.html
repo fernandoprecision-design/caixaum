@@ -125,18 +125,18 @@
       { keywords: ['ifood', 'rappi', 'ubereats', 'mercado', 'supermercado', 'atacadao', 'assai', 'carrefour', 'pao de acucar', 'padaria', 'restaurante', 'lanchonete', 'burger', 'pizza', 'sushi', 'acougue', 'hortifruti'], category: 'Alimentação & Mercado' },
       { keywords: ['uber', '99app', '99pop', 'posto', 'combustivel', 'gasolina', 'etanol', 'ipiranga', 'shell', 'br mania', 'estacionamento', 'sem parar', 'veloe', 'conectcar', 'pedagio', 'onibus', 'metro'], category: 'Transporte & Combustível' },
       { keywords: ['aluguel', 'condominio', 'energia', 'enel', 'cpfl', 'edp', 'luz', 'agua', 'sabesp', 'gas', 'comgas', 'internet', 'vivo', 'claro', 'tim', 'oi', 'iptu'], category: 'Moradia & Contas Fixas' },
-      { keywords: ['netflix', 'spotify', 'amazon prime', 'disney', 'hbo', 'max', 'youtube', 'cinema', 'ingresso', 'steam', 'playstation', 'xbox', 'airbnb', 'hotel', 'booking', 'azul', 'gol', 'latam', 'apple.com', 'google', 'adobe', 'chatgpt', 'openai'], category: 'Lazer & Assinaturas' },
-      { keywords: ['farmacia', 'drogaria', 'drogasil', 'raia', 'pacheco', 'hospital', 'clinica', 'medico', 'dentista', 'exame', 'laboratorio', 'academia', 'smartfit', 'wellhub', 'gympass'], category: 'Saúde & Bem-estar' },
+      { keywords: ['netflix', 'spotify', 'amazon prime', 'disney', 'hbo', 'max', 'youtube', 'cinema', 'ingresso', 'steam', 'playstation', 'xbox', 'airbnb', 'hotel', 'booking', 'azul', 'gol', 'latam', 'apple.com', 'apple com', 'google', 'adobe', 'chatgpt', 'openai'], category: 'Lazer & Assinaturas' },
+      { keywords: ['farmacia', 'drogaria', 'drogasil', 'raia', 'pacheco', 'hospital', 'clinica', 'medico', 'dentista', 'exame', 'laboratorio', 'academia', 'smartfit', 'wellhub', 'gympass', 'totalpass'], category: 'Saúde & Bem-estar' },
       { keywords: ['anuidade', 'encargos', 'iof', 'juros', 'multa', 'seguro cartao', 'tarifa'], category: 'Tarifas / Ajustes Fatura' },
       { keywords: ['salario', 'pix recebido', 'ted recebida', 'rendimento', 'dividendo', 'reembolso'], category: 'Renda / Salário' }
     ];
 
     const RECURRING_KEYWORDS = [
-      'netflix', 'spotify', 'amazon prime', 'prime video', 'disney', 'hbo', 'max',
-      'youtube', 'apple.com', 'icloud', 'google one', 'google storage', 'microsoft',
+      'netflix', 'spotify', 'amazon prime', 'amazon music', 'prime video', 'disney', 'hbo', 'max',
+      'youtube', 'apple.com', 'apple com', 'icloud', 'google one', 'google storage', 'microsoft',
       'adobe', 'chatgpt', 'openai', 'canva', 'smartfit', 'smart fit', 'wellhub',
       'gympass', 'totalpass', 'sem parar', 'veloe', 'conectcar', 'vivo', 'claro',
-      'tim', 'oi', 'seguro', 'assinatura', 'mensalidade', 'globoplay', 'deezer', 'audible'
+      'tim', 'oi', 'seguro', 'youse', 'assinatura', 'mensalidade', 'globoplay', 'deezer', 'audible', 'playstation'
     ];
 
     function getLocalTodayStr() {
@@ -397,6 +397,7 @@
       const barChartRef = useRef(null);
       const pieChartInstance = useRef(null);
       const barChartInstance = useRef(null);
+      const fixedCardDatesMigratedRef = useRef(false);
 
       useEffect(() => {
         const onReady = () => setFbReady(true);
@@ -414,11 +415,42 @@
 
       const isTxPaid = (t) => t.isPaid !== false;
 
+      // Identifica se o lançamento é uma compra/assinatura/parcela do Cartão de Crédito.
+      // O Pagamento da Fatura em si (category === 'Pagamento de Fatura') NÃO é compra no cartão, é a conta consolidada que vence no banco.
+      const isCreditCardPurchase = (t) => {
+        if (!t || t.category === 'Pagamento de Fatura') return false;
+        const pmNorm = normalizeText(t.paymentMethod || '');
+        const notesNorm = normalizeText(t.notes || '');
+        const idStr = String(t.id || '');
+        const baseMerchant = getBaseMerchantName(t.description);
+        const isSavedCardMerchant =
+          baseMerchant.length >= 4 &&
+          recurringMerchants.some(m => m && (baseMerchant === m || baseMerchant.includes(m) || m.includes(baseMerchant)));
+
+        return (
+          pmNorm.includes('cartao') ||
+          Boolean(t.isProjected) ||
+          idStr.startsWith('fatura_proj_') ||
+          idStr.startsWith('fatura_rec_') ||
+          notesNorm.includes('fatura') ||
+          notesNorm.includes('cartao') ||
+          isSavedCardMerchant
+        );
+      };
+
+      // Oculta dos banners e popups de vencimento TODAS as compras/parcelas/recorrentes do Cartão de Crédito.
+      // Mantém visíveis todas as demais compras/contas a vencer (PIX, débito, boleto, conta corrente e o próprio Pagamento da Fatura).
+      const isEligibleForDueAlert = (t) => {
+        return !isCreditCardPurchase(t);
+      };
+
       const todayStr = getLocalTodayStr();
 
       const dueTodayTransactions = useMemo(() => {
-        return transactions.filter(t => !isTxPaid(t) && t.type === 'expense' && t.date === todayStr);
-      }, [transactions, todayStr]);
+        return transactions.filter(
+          t => !isTxPaid(t) && t.type === 'expense' && t.date === todayStr && isEligibleForDueAlert(t)
+        );
+      }, [transactions, todayStr, recurringMerchants]);
 
       const dueTodayTotal = useMemo(() => {
         return dueTodayTransactions.reduce((acc, t) => acc + t.amount, 0);
@@ -426,10 +458,67 @@
 
       const pastPendingTransactions = useMemo(() => {
         return transactions
-          .filter(t => !isTxPaid(t) && t.date < todayStr)
+          .filter(t => !isTxPaid(t) && t.date < todayStr && isEligibleForDueAlert(t))
           .sort((a, b) => a.date.localeCompare(b.date));
-      }, [transactions, todayStr]);
+      }, [transactions, todayStr, recurringMerchants]);
 
+      // Corrige automaticamente projeções futuras de assinaturas recorrentes do cartão
+      // que tenham sido salvas anteriormente com o dia de vencimento da fatura (ex: dia 10),
+      // ajustando para o dia real da compra original no cartão.
+      useEffect(() => {
+        if (!user || !transactions.length || fixedCardDatesMigratedRef.current) return;
+
+        let changed = false;
+        const updatedList = transactions.map(t => {
+          const isProjectedCardRec =
+            Boolean(t.isProjected) &&
+            (t.recurrenceType === 'fixed' || (t.description || '').includes('[Recorrente]')) &&
+            isCreditCardPurchase(t);
+
+          if (!isProjectedCardRec) return t;
+
+          const baseMerchant = getBaseMerchantName(t.description);
+          const originTx = transactions
+            .filter(other => {
+              if (other.id === t.id || other.isProjected) return false;
+              if (!isCreditCardPurchase(other)) return false;
+              if (t.groupId && other.groupId === t.groupId) return true;
+              const otherMerchant = getBaseMerchantName(other.description);
+              return (
+                baseMerchant.length >= 4 &&
+                Math.abs(other.amount - t.amount) < 0.05 &&
+                (otherMerchant === baseMerchant || otherMerchant.includes(baseMerchant) || baseMerchant.includes(otherMerchant))
+              );
+            })
+            .sort((a, b) => a.date.localeCompare(b.date))[0];
+
+          if (!originTx || !originTx.date) return t;
+
+          const originDay = parseInt(originTx.date.split('-')[2], 10);
+          const [ty, tm, tdStr] = t.date.split('-');
+          const currentDay = parseInt(tdStr, 10);
+
+          if (originDay && currentDay !== originDay) {
+            const maxDays = new Date(parseInt(ty, 10), parseInt(tm, 10), 0).getDate();
+            const clampedDay = String(Math.min(originDay, maxDays)).padStart(2, '0');
+            const correctedDate = `${ty}-${tm}-${clampedDay}`;
+            if (correctedDate !== t.date) {
+              changed = true;
+              return { ...t, date: correctedDate };
+            }
+          }
+
+          return t;
+        });
+
+        fixedCardDatesMigratedRef.current = true;
+        if (changed) {
+          setTransactions(updatedList);
+          saveDataToFirestore(updatedList, categories, customRules, recurringMerchants, unpaidInvoiceReminder);
+        }
+      }, [user, transactions]);
+
+      // Abre o popup automaticamente ao entrar no app quando houver contas elegíveis (não-cartão) vencendo hoje
       useEffect(() => {
         if (!user || dueTodayTransactions.length === 0) return;
         const alertSessionKey = `caixaum_due_alert_${user.uid}_${todayStr}`;
@@ -539,6 +628,7 @@
           setCustomRules({});
           setRecurringMerchants([]);
           setUnpaidInvoiceReminder(null);
+          fixedCardDatesMigratedRef.current = false;
           return;
         }
         const { db, doc, onSnapshot } = window.FB;
@@ -592,13 +682,13 @@
       }, [transactions, selectedMonth]);
 
       const hiddenCardPurchasesCount = useMemo(() => {
-        return monthTransactions.filter(t => t.paymentMethod === 'Cartão de Crédito').length;
-      }, [monthTransactions]);
+        return monthTransactions.filter(t => isCreditCardPurchase(t)).length;
+      }, [monthTransactions, recurringMerchants]);
 
       const filteredMonthTransactions = useMemo(() => {
         return monthTransactions
           .filter(t => {
-            const isCardPurchase = t.paymentMethod === 'Cartão de Crédito';
+            const isCardPurchase = isCreditCardPurchase(t);
             if (!showCardPurchases && isCardPurchase && selectedCategoryFilter !== 'CARD_PROJECTED_ONLY') {
               return false;
             }
@@ -611,7 +701,7 @@
             return t.category === selectedCategoryFilter;
           })
           .sort((a, b) => a.date.localeCompare(b.date));
-      }, [monthTransactions, selectedCategoryFilter, showCardPurchases]);
+      }, [monthTransactions, selectedCategoryFilter, showCardPurchases, recurringMerchants]);
 
       const groupedTransactionsByCategory = useMemo(() => {
         const groupsMap = {};
@@ -665,7 +755,7 @@
             if (t.category !== 'Pagamento de Fatura') {
               consumptionExpense += t.amount;
             }
-            if (t.paymentMethod !== 'Cartão de Crédito') {
+            if (!isCreditCardPurchase(t)) {
               if (paid) realizedCashExpense += t.amount;
               else pendingExpense += t.amount;
             }
@@ -684,7 +774,7 @@
           realizedBalance: realizedIncome - realizedCashExpense,
           plannedBalance: totalPlannedIncome - totalPlannedExpense
         };
-      }, [monthTransactions]);
+      }, [monthTransactions, recurringMerchants]);
 
       useEffect(() => {
         if (activeTab !== 'dashboard') return;
@@ -737,7 +827,7 @@
 
             const mTxs = transactions.filter(t => t.date && t.date.startsWith(ym));
             incomeData.push(mTxs.filter(t => t.type === 'income').reduce((a, b) => a + b.amount, 0));
-            expenseData.push(mTxs.filter(t => t.type === 'expense' && t.paymentMethod !== 'Cartão de Crédito').reduce((a, b) => a + b.amount, 0));
+            expenseData.push(mTxs.filter(t => t.type === 'expense' && !isCreditCardPurchase(t)).reduce((a, b) => a + b.amount, 0));
           }
 
           barChartInstance.current = new Chart(barChartRef.current, {
@@ -756,7 +846,7 @@
             }
           });
         }
-      }, [activeTab, transactions, selectedMonth, categories, monthTransactions]);
+      }, [activeTab, transactions, selectedMonth, categories, monthTransactions, recurringMerchants]);
 
       const translateFirebaseAuthError = (code) => {
         switch (code) {
@@ -1016,28 +1106,27 @@
         saveDataToFirestore(updated, categories, customRules, recurringMerchants, unpaidInvoiceReminder);
       };
 
-      // Solicitar confirmação antes de marcar como recorrente
       const handleRequestMakeRecurring = (id) => {
         const target = transactions.find(t => t.id === id);
         if (!target) return;
         setRecurrenceActionModal({ mode: 'make', tx: target });
       };
 
-      // Confirmar recorrência e projetar próximos 11 meses
       const handleConfirmMakeRecurring = () => {
         if (!recurrenceActionModal || recurrenceActionModal.mode !== 'make') return;
         const target = recurrenceActionModal.tx;
 
         const baseCleanMerchant = getBaseMerchantName(target.description);
+        const isCard = isCreditCardPurchase(target);
         const updatedMerchants = [...recurringMerchants];
-        if (baseCleanMerchant.length >= 4 && !updatedMerchants.includes(baseCleanMerchant)) {
+        if (isCard && baseCleanMerchant.length >= 4 && !updatedMerchants.includes(baseCleanMerchant)) {
           updatedMerchants.push(baseCleanMerchant);
           setRecurringMerchants(updatedMerchants);
         }
 
         const groupId = target.groupId || `rec_grp_${Date.now()}`;
-        const isCard = target.paymentMethod === 'Cartão de Crédito';
-        const anchorDateStr = isCard ? `${target.date.slice(0, 7)}-${String(defaultInvoiceDay).padStart(2, '0')}` : target.date;
+        // Sempre replica preservando o dia exato da compra (target.date) para os meses seguintes!
+        const anchorDateStr = target.date;
         const cleanTitle = target.description.replace(/\s*\[Recorrente\]/g, '').trim();
 
         const projectedItems = [];
@@ -1064,7 +1153,7 @@
               amount: target.amount,
               type: target.type,
               category: target.category,
-              paymentMethod: target.paymentMethod || 'Débito / PIX',
+              paymentMethod: isCard ? 'Cartão de Crédito' : (target.paymentMethod || 'Débito / PIX'),
               recurrenceType: 'fixed',
               isPaid: false,
               isProjected: isCard,
@@ -1087,7 +1176,6 @@
         setRecurrenceActionModal(null);
       };
 
-      // Solicitar desfazer recorrência
       const handleRequestUndoRecurring = (id) => {
         const target = transactions.find(t => t.id === id);
         if (!target) return;
@@ -1108,7 +1196,6 @@
         setRecurrenceActionModal({ mode: 'undo', tx: target, seriesItems });
       };
 
-      // Confirmar desfazer recorrência
       const handleConfirmUndoRecurring = (undoOption) => {
         if (!recurrenceActionModal || recurrenceActionModal.mode !== 'undo') return;
         const { tx, seriesItems } = recurrenceActionModal;
@@ -1140,7 +1227,6 @@
               return t;
             });
         } else {
-          // Desvincular toda a série mantendo todos os lançamentos como avulsos
           updatedTransactions = transactions.map(t => {
             if (seriesIds.has(t.id)) {
               const { groupId, ...rest } = t;
@@ -1173,7 +1259,6 @@
         setIsImportModalOpen(true);
       };
 
-      // Parse de múltiplas extensões (.csv, .ofx, .xlsx, .xls, .pdf) para gerar prévia
       const parseRawLinesToItems = (rows, docType) => {
         const parsedItems = [];
         const fallbackDate = docType === 'card_invoice' ? invoiceDueDate : `${selectedMonth}-01`;
@@ -1392,7 +1477,6 @@
         });
       };
 
-      // Confirmar e efetivar a importação revisada na prévia
       const handleConfirmAndCommitImport = () => {
         if (!importPreviewData) return;
         const selectedItems = importPreviewData.items.filter(it => it.selected);
@@ -1458,11 +1542,10 @@
               : undefined;
             matchedGroupId = itemGroupId || null;
 
-            const txDate = isCardInvoice ? item.date : item.date;
             newItemsToAdd.push({
               id: `imp_${Date.now()}_${index}`,
               ...(itemGroupId ? { groupId: itemGroupId } : {}),
-              date: txDate,
+              date: item.date,
               description: item.isRecurring && !item.description.includes('[Recorrente]')
                 ? `${item.description} [Recorrente]`
                 : item.description,
@@ -1473,7 +1556,7 @@
               recurrenceType: item.instInfo ? 'installment' : item.isRecurring ? 'fixed' : 'single',
               installmentCurrent: item.instInfo?.current,
               installmentTotal: item.instInfo?.total,
-              isPaid: isCardInvoice ? true : txDate <= currentToday,
+              isPaid: isCardInvoice ? true : item.date <= currentToday,
               isProjected: false
             });
           }
@@ -1483,7 +1566,8 @@
               const remainingCount = item.instInfo.total - item.instInfo.current;
               for (let step = 1; step <= remainingCount; step++) {
                 const nextNum = item.instInfo.current + step;
-                const nextDateStr = addMonthsPreservingDay(invoiceDueDate, step);
+                // Preserva o dia da compra no cartão para as parcelas futuras projetadas
+                const nextDateStr = addMonthsPreservingDay(item.date, step);
                 const nextMonthPrefix = nextDateStr.slice(0, 7);
 
                 const futureAlreadyExists = [...workingTransactions, ...newItemsToAdd].some(t => {
@@ -1524,7 +1608,8 @@
               }
             } else if (item.isRecurring) {
               for (let step = 1; step <= 11; step++) {
-                const nextDateStr = addMonthsPreservingDay(invoiceDueDate, step);
+                // Sempre replica o dia exato da compra no cartão (item.date) nos meses subsequentes
+                const nextDateStr = addMonthsPreservingDay(item.date, step);
                 const nextMonthPrefix = nextDateStr.slice(0, 7);
 
                 const futureAlreadyExists = [...workingTransactions, ...newItemsToAdd].some(t => {
@@ -1606,11 +1691,12 @@
         if (isNaN(baseAmount) || baseAmount <= 0) return;
 
         const baseCleanMerchant = getBaseMerchantName(formData.description);
+        const isCard = formData.paymentMethod === 'Cartão de Crédito';
         let updatedTxList = [];
         let updatedRules = { ...customRules };
         let updatedMerchants = [...recurringMerchants];
 
-        if (formData.recurrenceType === 'fixed' && baseCleanMerchant.length >= 4 && !updatedMerchants.includes(baseCleanMerchant)) {
+        if (isCard && formData.recurrenceType === 'fixed' && baseCleanMerchant.length >= 4 && !updatedMerchants.includes(baseCleanMerchant)) {
           updatedMerchants.push(baseCleanMerchant);
           setRecurringMerchants(updatedMerchants);
         }
@@ -1630,7 +1716,6 @@
 
           const wasSingle = !oldTx?.recurrenceType || oldTx.recurrenceType === 'single';
           const becameRecurringOrInst = formData.recurrenceType === 'installment' || formData.recurrenceType === 'fixed';
-          const isCard = formData.paymentMethod === 'Cartão de Crédito';
           const currInst = formData.currentInstallment || 1;
           const totalInst = formData.installments || 2;
           const newGroupId = wasSingle && becameRecurringOrInst ? `grp_conv_${Date.now()}` : oldTx?.groupId;
@@ -1686,7 +1771,8 @@
 
           if (wasSingle && becameRecurringOrInst) {
             const generatedFuture = [];
-            const anchorDateStr = isCard ? `${formData.date.slice(0, 7)}-${String(defaultInvoiceDay).padStart(2, '0')}` : formData.date;
+            // Sempre replica o dia exato da compra (formData.date) nos meses subsequentes
+            const anchorDateStr = formData.date;
 
             if (formData.recurrenceType === 'installment' && totalInst > currInst) {
               for (let nextNum = currInst + 1; nextNum <= totalInst; nextNum++) {
@@ -2013,9 +2099,9 @@
 
       const renderTransactionRow = (t, hideCategoryColumn = false) => {
         const paid = isTxPaid(t);
-        const isDueToday = !paid && t.type === 'expense' && t.date === todayStr;
+        const isDueToday = !paid && t.type === 'expense' && t.date === todayStr && isEligibleForDueAlert(t);
         const isCardProjected = Boolean(t.isProjected);
-        const isCreditCard = t.paymentMethod === 'Cartão de Crédito';
+        const isCreditCard = isCreditCardPurchase(t);
         const isSingle = !t.recurrenceType || t.recurrenceType === 'single';
         const isFixed = t.recurrenceType === 'fixed' || t.description.includes('[Recorrente]');
 
@@ -3076,7 +3162,7 @@
                         Valor: <strong>R$ {recurrenceActionModal.tx.amount.toFixed(2)}</strong> • Data: <strong>{formatDateBR(recurrenceActionModal.tx.date)}</strong>
                       </p>
                       <p class="text-xs text-sky-700 pt-1">
-                        Deseja transformar este lançamento em assinatura recorrente e projetar automaticamente os próximos <strong>11 meses</strong>?
+                        Deseja transformar este lançamento em assinatura recorrente e projetar automaticamente os próximos <strong>11 meses</strong> sempre no dia <strong>{recurrenceActionModal.tx.date.split('-')[2]}</strong>?
                       </p>
                     </div>
 
@@ -3725,7 +3811,7 @@
                           />
                           <label htmlFor="chkProjectInstallments" class="text-xs text-indigo-950 cursor-pointer">
                             <span class="font-bold block">Projetar parcelas e assinaturas automaticamente</span>
-                            <span class="text-[11px] text-indigo-800">Cria as próximas parcelas e assinaturas nos meses seguintes e as concilia na próxima fatura.</span>
+                            <span class="text-[11px] text-indigo-800">Cria as próximas parcelas e assinaturas nos meses seguintes preservando a data original da compra no cartão.</span>
                           </label>
                         </div>
 
