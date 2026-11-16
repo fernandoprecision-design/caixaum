@@ -7,22 +7,24 @@
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
   <!-- Lucide Icons -->
-  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://unpkg.com/lucide@0.468.0"></script>
   <!-- SheetJS (XLSX/XLS) -->
   <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
   <!-- PDF.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <!-- React & ReactDOM -->
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
   <!-- Babel for JSX -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.26.4/babel.min.js"></script>
   
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
     body { font-family: 'Inter', sans-serif; }
+    button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid #10b981; outline-offset: 2px; }
+    .tabular-nums { font-variant-numeric: tabular-nums; }
     .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
     .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
   </style>
@@ -138,6 +140,10 @@
       'gympass', 'totalpass', 'sem parar', 'veloe', 'conectcar', 'vivo', 'claro',
       'tim', 'oi', 'seguro', 'youse', 'assinatura', 'mensalidade', 'globoplay', 'deezer', 'audible', 'playstation'
     ];
+
+    const brl = (v) => 'R$ ' + (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const nowId = () => `${nowId()}${Math.random().toString(36).slice(2, 7)}`;
+    const hasKw = (text, kw) => kw.length <= 4 ? (' ' + text.replace(/[^a-z0-9]+/g, ' ') + ' ').includes(' ' + kw + ' ') : text.includes(kw);
 
     function getLocalTodayStr() {
       const now = new Date();
@@ -335,7 +341,7 @@
       const norm = normalizeText(description);
       const baseMerchant = getBaseMerchantName(description);
       if (savedRecurringMerchants.some(m => m && baseMerchant.includes(m))) return true;
-      return RECURRING_KEYWORDS.some(kw => norm.includes(kw));
+      return RECURRING_KEYWORDS.some(kw => hasKw(norm, kw));
     }
 
     function guessCategory(description, customRules = {}, availableCategories = []) {
@@ -355,7 +361,7 @@
       }
 
       for (const rule of AUTO_CATEGORIZE_RULES) {
-        if (rule.keywords.some(kw => descLower.includes(kw))) {
+        if (rule.keywords.some(kw => hasKw(descLower, kw))) {
           const exists = availableCategories.some(c => c.name === rule.category);
           if (exists) return rule.category;
         }
@@ -402,6 +408,8 @@
         if (!isNaN(d)) return d.toISOString().slice(0, 10);
       }
       const str = String(rawDate).trim();
+      const isoFirst = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+      if (isoFirst) return `${isoFirst[1]}-${isoFirst[2].padStart(2, '0')}-${isoFirst[3].padStart(2, '0')}`;
       const brMatch = str.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
       if (brMatch) {
         const d = brMatch[1].padStart(2, '0');
@@ -446,6 +454,7 @@
       const [recurringMerchants, setRecurringMerchants] = useState([]);
       const [unpaidInvoiceReminder, setUnpaidInvoiceReminder] = useState(null);
       const [defaultInvoiceDay, setDefaultInvoiceDay] = useState('10');
+      const [saveStatus, setSaveStatus] = useState('idle');
 
       const [isModalOpen, setIsModalOpen] = useState(false);
       const [isGoalsModalOpen, setIsGoalsModalOpen] = useState(false);
@@ -837,6 +846,8 @@
         if (!user || !window.FB) return;
         const { db, doc, setDoc } = window.FB;
         const userDocRef = doc(db, "fernance_users", user.uid);
+        setSaveStatus('saving');
+        try {
         await setDoc(userDocRef, {
           transactions: newTransactions,
           categories: newCategories,
@@ -846,6 +857,12 @@
           defaultInvoiceDay: newDefaultInvoiceDay,
           updatedAt: new Date().toISOString()
         }, { merge: true });
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus(s => (s === 'saved' ? 'idle' : s)), 2000);
+        } catch (err) {
+          console.error('Erro ao salvar:', err);
+          setSaveStatus('error');
+        }
       };
 
       const monthTransactions = useMemo(() => {
@@ -947,6 +964,35 @@
         };
       }, [monthTransactions, recurringMerchants]);
 
+      const insights = useMemo(() => {
+        const [y, m] = selectedMonth.split('-').map(Number);
+        const pd = new Date(y, m - 2, 1);
+        const prevYM = `${pd.getFullYear()}-${String(pd.getMonth() + 1).padStart(2, '0')}`;
+        let prevCons = 0;
+        transactions.forEach(t => {
+          if (t.date && t.date.startsWith(prevYM) && t.type === 'expense' && t.category !== 'Pagamento de Fatura') prevCons += t.amount;
+        });
+        const today = getLocalTodayStr();
+        const daysInMonth = new Date(y, m, 0).getDate();
+        let daysLeft = 0;
+        if (today.startsWith(selectedMonth)) daysLeft = daysInMonth - Number(today.slice(8, 10)) + 1;
+        else if (selectedMonth > today.slice(0, 7)) daysLeft = daysInMonth;
+        const goalCats = categories.filter(c => !c.isIncome && !c.isSystem);
+        const budget = goalCats.reduce((a, c) => a + (c.limit || 0), 0);
+        const budgetPct = budget > 0 ? (totals.consumptionExpense / budget) * 100 : 0;
+        const income = totals.realizedIncome + totals.pendingIncome;
+        const savingsRate = income > 0 ? ((income - totals.consumptionExpense) / income) * 100 : null;
+        const topGoals = goalCats.filter(c => (c.limit || 0) > 0).map(c => {
+          const spent = monthTransactions.filter(t => t.type === 'expense' && t.category === c.name).reduce((a, b) => a + b.amount, 0);
+          return { name: c.name, color: c.color, spent, limit: c.limit, pct: (spent / c.limit) * 100 };
+        }).sort((a, b) => b.pct - a.pct).slice(0, 4);
+        const lim = new Date(); lim.setDate(lim.getDate() + 7);
+        const limStr = `${lim.getFullYear()}-${String(lim.getMonth() + 1).padStart(2, '0')}-${String(lim.getDate()).padStart(2, '0')}`;
+        const upcoming = transactions.filter(t => t.type === 'expense' && !isTxPaid(t) && !isCreditCardPurchase(t) && t.date >= today && t.date <= limStr)
+          .sort((a, b) => a.date.localeCompare(b.date)).slice(0, 5);
+        return { prevCons, daysLeft, budget, budgetPct, budgetLeft: budget - totals.consumptionExpense, savingsRate, topGoals, upcoming };
+      }, [transactions, categories, totals, monthTransactions, selectedMonth, recurringMerchants]);
+
       useEffect(() => {
         if (activeTab !== 'dashboard') return;
 
@@ -983,7 +1029,7 @@
               maintainAspectRatio: false,
               plugins: {
                 legend: {
-                  position: 'right',
+                  position: window.innerWidth < 640 ? 'bottom' : 'right',
                   onHover: (event, legendItem, legend) => {
                     const chart = legend.chart;
                     if (!hasData || legendItem.index === undefined) return;
@@ -1056,7 +1102,8 @@
             options: {
               responsive: true,
               maintainAspectRatio: false,
-              scales: { y: { beginAtZero: true } }
+              scales: { y: { beginAtZero: true, ticks: { callback: v => 'R$ ' + Number(v).toLocaleString('pt-BR') } } },
+              plugins: { tooltip: { callbacks: { label: c => ` ${c.dataset.label}: ${brl(c.parsed.y)}` } } }
             }
           });
         }
@@ -1338,7 +1385,7 @@
           setRecurringMerchants(updatedMerchants);
         }
 
-        const groupId = target.groupId || `rec_grp_${Date.now()}`;
+        const groupId = target.groupId || `rec_grp_${nowId()}`;
         const anchorDateStr = target.date;
         const cleanTitle = target.description.replace(/\s*\[Recorrente\]/g, '').trim();
 
@@ -1359,7 +1406,7 @@
 
           if (!alreadyExists) {
             projectedItems.push({
-              id: `rec_man_${Date.now()}_${step}`,
+              id: `rec_man_${nowId()}_${step}`,
               groupId: groupId,
               date: nextDateStr,
               description: `${cleanTitle} [Recorrente]`,
@@ -1509,7 +1556,7 @@ const parseRawLinesToItems = (rows, docType) => {
             : guessCategory(descVal, customRules, categories);
 
           parsedItems.push({
-            tempId: `prev_${idx}_${Date.now()}`,
+            tempId: `prev_${idx}_${nowId()}`,
             selected: true,
             date: dateVal,
             description: descVal,
@@ -1750,12 +1797,12 @@ const parseRawLinesToItems = (rows, docType) => {
             };
           } else {
             const itemGroupId = isCardInvoice && (item.instInfo || item.isRecurring)
-              ? `csv_grp_${Date.now()}_${index}`
+              ? `csv_grp_${nowId()}_${index}`
               : undefined;
             matchedGroupId = itemGroupId || null;
 
             newItemsToAdd.push({
-              id: `imp_${Date.now()}_${index}`,
+              id: `imp_${nowId()}_${index}`,
               ...(itemGroupId ? { groupId: itemGroupId } : {}),
               date: item.date,
               description: item.isRecurring && !item.description.includes('[Recorrente]')
@@ -1800,8 +1847,8 @@ const parseRawLinesToItems = (rows, docType) => {
                   const projectedDesc = item.description.replace(item.instInfo.rawMatch, `(${nextLabel})`);
 
                   newItemsToAdd.push({
-                    id: `fatura_proj_${Date.now()}_${index}_${nextNum}`,
-                    groupId: matchedGroupId || `csv_grp_${Date.now()}_${index}`,
+                    id: `fatura_proj_${nowId()}_${index}_${nextNum}`,
+                    groupId: matchedGroupId || `csv_grp_${nowId()}_${index}`,
                     date: nextDateStr,
                     description: projectedDesc,
                     amount: absVal,
@@ -1834,8 +1881,8 @@ const parseRawLinesToItems = (rows, docType) => {
 
                 if (!futureAlreadyExists) {
                   newItemsToAdd.push({
-                    id: `fatura_rec_${Date.now()}_${index}_${step}`,
-                    groupId: matchedGroupId || `csv_grp_${Date.now()}_${index}`,
+                    id: `fatura_rec_${nowId()}_${index}_${step}`,
+                    groupId: matchedGroupId || `csv_grp_${nowId()}_${index}`,
                     date: nextDateStr,
                     description: `${item.description} [Recorrente]`,
                     amount: absVal,
@@ -1859,7 +1906,7 @@ const parseRawLinesToItems = (rows, docType) => {
 
           if (extraPrevVal > 0) {
             newItemsToAdd.push({
-              id: `prev_balance_${Date.now()}`,
+              id: `prev_balance_${nowId()}`,
               date: invoiceDueDate,
               description: 'Saldo Devedor / Resíduo Fatura Anterior',
               amount: extraPrevVal,
@@ -1873,7 +1920,7 @@ const parseRawLinesToItems = (rows, docType) => {
 
           if (totalFinalInvoiceToPay > 0) {
             newItemsToAdd.push({
-              id: `invoice_payment_${Date.now()}`,
+              id: `invoice_payment_${nowId()}`,
               date: invoiceDueDate,
               description: `Pagamento Fatura Cartão (${extraPrevVal > 0 ? 'Compras + Saldo Anterior' : 'Compras do Mês'})`,
               amount: Math.round(totalFinalInvoiceToPay * 100) / 100,
@@ -1928,7 +1975,7 @@ const parseRawLinesToItems = (rows, docType) => {
           const becameRecurringOrInst = formData.recurrenceType === 'installment' || formData.recurrenceType === 'fixed';
           const currInst = formData.currentInstallment || 1;
           const totalInst = formData.installments || 2;
-          const newGroupId = wasSingle && becameRecurringOrInst ? `grp_conv_${Date.now()}` : oldTx?.groupId;
+          const newGroupId = wasSingle && becameRecurringOrInst ? `grp_conv_${nowId()}` : oldTx?.groupId;
 
           if (!wasSingle && oldTx?.groupId && (Math.abs(oldTx.amount - baseAmount) >= 0.01 || oldTx.category !== formData.category)) {
             const futureSiblingsCount = transactions.filter(
@@ -2031,7 +2078,7 @@ const parseRawLinesToItems = (rows, docType) => {
           }
         } else {
           const newItems = [];
-          const groupId = `grp_${Date.now()}`;
+          const groupId = `grp_${nowId()}`;
           const startOffset = parseInt(formData.installmentStartOffset, 10) || 0;
 
           if (formData.recurrenceType === 'installment' && formData.installments > 1) {
@@ -2079,7 +2126,7 @@ const parseRawLinesToItems = (rows, docType) => {
             }
           } else {
             newItems.push({
-              id: `tx_${Date.now()}`,
+              id: `tx_${nowId()}`,
               ...formData,
               amount: baseAmount,
               isPaid: Boolean(formData.isPaid)
@@ -2151,7 +2198,7 @@ const parseRawLinesToItems = (rows, docType) => {
           setCategoryFormData({ name: '', color: '#10B981', limit: 1000, isIncome: false });
         } else {
           const newCat = {
-            id: `cat_${Date.now()}`,
+            id: `cat_${nowId()}`,
             name: trimmedName,
             color: categoryFormData.color,
             limit: parseFloat(categoryFormData.limit) || 1000,
@@ -2391,7 +2438,7 @@ const parseRawLinesToItems = (rows, docType) => {
               <td class="py-3 px-4"><span class="bg-slate-100 text-slate-700 px-2.5 py-1 rounded-md text-xs font-medium">{t.category}</span></td>
             )}
             <td class={`py-3 px-4 text-right font-bold whitespace-nowrap ${t.type === 'expense' ? (paid ? 'text-red-600' : isCardProjected ? 'text-indigo-500' : 'text-red-400') : (paid ? 'text-emerald-600' : 'text-emerald-400')}`}>
-              {t.type === 'expense' ? '-' : '+'} R$ {t.amount.toFixed(2)}
+              {t.type === 'expense' ? '-' : '+'} {brl(t.amount)}
             </td>
             <td class="py-3 px-4 text-center">
               <div class="flex items-center justify-center space-x-1">
@@ -2713,7 +2760,7 @@ const parseRawLinesToItems = (rows, docType) => {
 
           {/* Abas */}
           <div class="bg-white border-b border-slate-200">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex space-x-8">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex space-x-8 overflow-x-auto whitespace-nowrap">
               {[
                 { id: 'dashboard', label: 'Dashboard & Gráficos', icon: 'pie-chart' },
                 { id: 'transactions', label: `Transações (${filteredMonthTransactions.length})`, icon: 'receipt' },
@@ -2731,6 +2778,11 @@ const parseRawLinesToItems = (rows, docType) => {
             </div>
           </div>
 
+          {saveStatus !== 'idle' && (
+            <div class={`fixed bottom-4 right-4 z-50 px-3 py-2 rounded-xl text-xs font-semibold shadow-lg ${saveStatus === 'error' ? 'bg-red-600 text-white' : saveStatus === 'saving' ? 'bg-slate-800 text-white' : 'bg-emerald-600 text-white'}`}>
+              {saveStatus === 'saving' ? 'Salvando…' : saveStatus === 'saved' ? 'Salvo ✓' : 'Falha ao salvar — verifique a conexão e tente de novo'}
+            </div>
+          )}
           {/* Conteúdo */}
           <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
             {unpaidInvoiceReminder && unpaidInvoiceReminder.amount > 0 && (
@@ -2822,13 +2874,13 @@ const parseRawLinesToItems = (rows, docType) => {
 
             {activeTab === 'dashboard' && (
               <div class="space-y-8">
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
                   <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                     <div class="flex items-center justify-between">
                       <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Saldo Realizado (Banco)</span>
                       <span class="text-[10px] font-bold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded">Efetivado</span>
                     </div>
-                    <p class={`text-2xl font-bold mt-2 ${totals.realizedBalance >= 0 ? 'text-slate-900' : 'text-red-600'}`}>
+                    <p class={`text-2xl font-bold tabular-nums mt-2 ${totals.realizedBalance >= 0 ? 'text-slate-900' : 'text-red-600'}`}>
                       R$ {totals.realizedBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </p>
                     <p class="text-xs text-slate-500 mt-1.5">
@@ -2866,6 +2918,44 @@ const parseRawLinesToItems = (rows, docType) => {
                       R$ {totals.consumptionExpense.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </p>
                     <p class="text-xs text-slate-400 mt-1.5">Competência (Pago + Previsto)</p>
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                    <h3 class="font-bold text-slate-800 mb-3">Saúde do orçamento</h3>
+                    {insights.budget > 0 ? (
+                      <div>
+                        <div class="w-full bg-slate-100 h-3 rounded-full overflow-hidden"><div class={`h-full ${insights.budgetPct >= 100 ? 'bg-red-500' : insights.budgetPct > 75 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${Math.min(100, insights.budgetPct)}%` }}></div></div>
+                        <p class="text-sm text-slate-600 mt-3 tabular-nums">{brl(totals.consumptionExpense)} de {brl(insights.budget)} ({insights.budgetPct.toFixed(0)}%)</p>
+                        <p class={`text-xs mt-1 font-medium ${insights.budgetLeft < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                          {insights.budgetLeft < 0 ? `Acima do orçamento em ${brl(-insights.budgetLeft)}` : `Ainda cabem ${brl(insights.budgetLeft)}${insights.daysLeft > 0 ? ` (≈ ${brl(insights.budgetLeft / insights.daysLeft)}/dia)` : ''}`}
+                        </p>
+                      </div>
+                    ) : (<p class="text-sm text-slate-400">Defina metas na aba Metas &amp; Orçamento.</p>)}
+                    {insights.savingsRate !== null && (<p class="text-xs text-slate-500 mt-3">Taxa de poupança: <strong class={insights.savingsRate >= 0 ? 'text-emerald-600' : 'text-red-600'}>{insights.savingsRate.toFixed(0)}%</strong> da receita do mês</p>)}
+                    {insights.prevCons > 0 && (() => { const d = ((totals.consumptionExpense - insights.prevCons) / insights.prevCons) * 100; return (<p class="text-xs text-slate-500 mt-1">Consumo vs. mês anterior: <strong class={d <= 0 ? 'text-emerald-600' : 'text-red-600'}>{d > 0 ? '+' : ''}{d.toFixed(0)}%</strong></p>); })()}
+                  </div>
+                  <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                    <h3 class="font-bold text-slate-800 mb-3">Metas em atenção</h3>
+                    {insights.topGoals.length === 0 && <p class="text-sm text-slate-400">Nenhuma meta definida.</p>}
+                    <div class="space-y-3">
+                      {insights.topGoals.map(g => (
+                        <div key={g.name}>
+                          <div class="flex justify-between text-xs"><span class="font-semibold text-slate-700 truncate pr-2">{g.name}</span><span class={`tabular-nums ${g.pct >= 100 ? 'text-red-600 font-bold' : 'text-slate-500'}`}>{g.pct.toFixed(0)}%</span></div>
+                          <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden mt-1"><div class={`h-full ${g.pct >= 100 ? 'bg-red-500' : g.pct > 75 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${Math.min(100, g.pct)}%` }}></div></div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                    <h3 class="font-bold text-slate-800 mb-3">Vencendo nos próximos 7 dias</h3>
+                    {insights.upcoming.length === 0 && <p class="text-sm text-slate-400">Nada a pagar nos próximos dias.</p>}
+                    <ul class="space-y-2">
+                      {insights.upcoming.map(t => (
+                        <li key={t.id} class="flex justify-between text-sm"><span class="text-slate-600 truncate pr-2">{formatDateBR(t.date).slice(0, 5)} · {t.description}</span><span class="font-semibold text-slate-800 tabular-nums">{brl(t.amount)}</span></li>
+                      ))}
+                    </ul>
                   </div>
                 </div>
 
@@ -3105,11 +3195,19 @@ const parseRawLinesToItems = (rows, docType) => {
                   </div>
                 </div>
 
+                {insights.budget > 0 && (
+                  <div class={`rounded-xl p-4 text-sm font-medium ${insights.budgetLeft < 0 ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-800'}`}>
+                    {insights.budgetLeft < 0
+                      ? `No total você está ${brl(-insights.budgetLeft)} acima das metas do mês. Precisa economizar esse valor nas categorias estouradas.`
+                      : `Dentro das metas: ainda cabem ${brl(insights.budgetLeft)} neste mês${insights.daysLeft > 0 ? ` (≈ ${brl(insights.budgetLeft / insights.daysLeft)} por dia)` : ''}.`}
+                  </div>
+                )}
                 <div class="space-y-6">
                   {categories.filter(c => !c.isIncome && !c.isSystem).map(cat => {
                     const spent = monthTransactions.filter(t => t.type === 'expense' && t.category === cat.name).reduce((a, b) => a + b.amount, 0);
-                    const limit = cat.limit || 1000;
-                    const percent = Math.min(100, (spent / limit) * 100);
+                    const limit = cat.limit || 0;
+                    const rawPercent = limit > 0 ? (spent / limit) * 100 : (spent > 0 ? 100 : 0);
+                    const percent = Math.min(100, rawPercent);
                     const remaining = limit - spent;
                     let statusColor = 'bg-emerald-500';
                     if (percent > 75) statusColor = 'bg-amber-500';
@@ -3122,15 +3220,15 @@ const parseRawLinesToItems = (rows, docType) => {
                             <span class="w-3 h-3 rounded-full" style={{ backgroundColor: cat.color }}></span>
                             <span>{cat.name}</span>
                           </span>
-                          <span class="text-slate-500">R$ {spent.toFixed(2)} de <strong>R$ {limit.toFixed(2)}</strong></span>
+                          <span class="text-slate-500">{brl(spent)} de <strong>{limit > 0 ? brl(limit) : '—'}</strong></span>
                         </div>
                         <div class="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
                           <div class={`h-full ${statusColor} transition-all duration-500`} style={{ width: `${percent}%` }}></div>
                         </div>
                         <div class="flex justify-between text-xs text-slate-400">
-                          <span>{percent.toFixed(0)}% usado</span>
+                          <span>{limit > 0 ? `${rawPercent.toFixed(0)}% usado` : 'sem meta'}</span>
                           <span class={remaining < 0 ? 'text-red-600 font-bold' : 'text-emerald-600 font-medium'}>
-                            {remaining < 0 ? `Estourou R$ ${Math.abs(remaining).toFixed(2)}` : `Resta economizar R$ ${remaining.toFixed(2)}`}
+                            {limit <= 0 ? 'Defina uma meta em Ajustar Metas' : remaining < 0 ? `Estourou ${brl(Math.abs(remaining))} — precisa cortar esse valor` : `Disponível ${brl(remaining)}${insights.daysLeft > 0 ? ` · ≈ ${brl(remaining / insights.daysLeft)}/dia` : ''}`}
                           </span>
                         </div>
                       </div>
