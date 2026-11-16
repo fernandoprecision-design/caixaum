@@ -178,7 +178,6 @@
         .trim();
     }
 
-    // Converte valores falados por extenso ou compostos em português (ex: "2 mil", "cento e cinquenta", "mil trezentos e quarenta e cinco e cinquenta")
     function parseSpokenAmountBR(rawTranscript) {
       const norm = normalizeText(rawTranscript);
 
@@ -235,7 +234,6 @@
         return hasNumberToken ? total + current : NaN;
       };
 
-      // Ignora números ligados a parcelas ("em 10 vezes", "3 parcelas") antes de extrair o valor financeiro
       const withoutInstallments = norm.replace(/\b(?:em\s+)?(?:\d+|uma|duas|tres|quatro|cinco|seis|sete|oito|nove|dez|onze|doze)\s*(?:vezes|x|parcelas?)\b/g, ' ');
       const cleanedForNum = withoutInstallments.replace(/[r$]/g, ' ').replace(/\s+/g, ' ').trim();
       const tokens = cleanedForNum.split(' ');
@@ -247,7 +245,6 @@
         hundredsMap[w] !== undefined ||
         w === 'mil' || w === 'milhao' || w === 'milhoes';
 
-      // Procura sequências numéricas antes de "reais"/"real"
       const reaisIdx = tokens.findIndex(t => t === 'reais' || t === 'real');
       if (reaisIdx > 0) {
         let start = reaisIdx - 1;
@@ -279,7 +276,6 @@
         }
       }
 
-      // Fallback: captura o maior bloco numérico falado em qualquer posição da frase
       let bestVal = NaN;
       let i = 0;
       while (i < tokens.length) {
@@ -965,6 +961,8 @@
 
           const labels = Object.keys(expenseByCat);
           const data = Object.values(expenseByCat);
+          const hasData = data.length > 0;
+          const totalPieValue = data.reduce((sum, val) => sum + val, 0);
           const bgColors = labels.map(label => {
             const found = categories.find(c => c.name === label);
             return found ? found.color : '#64748B';
@@ -973,17 +971,58 @@
           pieChartInstance.current = new Chart(pieChartRef.current, {
             type: 'doughnut',
             data: {
-              labels: labels.length ? labels : ['Sem Gastos no Mês'],
+              labels: hasData ? labels : ['Sem Gastos no Mês'],
               datasets: [{
-                data: data.length ? data : [1],
-                backgroundColor: data.length ? bgColors : ['#E2E8F0'],
+                data: hasData ? data : [1],
+                backgroundColor: hasData ? bgColors : ['#E2E8F0'],
                 borderWidth: 2
               }]
             },
             options: {
               responsive: true,
               maintainAspectRatio: false,
-              plugins: { legend: { position: 'right' } }
+              plugins: {
+                legend: {
+                  position: 'right',
+                  onHover: (event, legendItem, legend) => {
+                    const chart = legend.chart;
+                    if (!hasData || legendItem.index === undefined) return;
+                    if (event?.native?.target) {
+                      event.native.target.style.cursor = 'pointer';
+                    }
+                    chart.setActiveElements([{ datasetIndex: 0, index: legendItem.index }]);
+                    chart.tooltip.setActiveElements([{ datasetIndex: 0, index: legendItem.index }], { x: 0, y: 0 });
+                    chart.update('none');
+                  },
+                  onLeave: (event, legendItem, legend) => {
+                    const chart = legend.chart;
+                    if (event?.native?.target) {
+                      event.native.target.style.cursor = 'default';
+                    }
+                    chart.setActiveElements([]);
+                    chart.tooltip.setActiveElements([], { x: 0, y: 0 });
+                    chart.update('none');
+                  }
+                },
+                tooltip: {
+                  enabled: hasData,
+                  callbacks: {
+                    label: (context) => {
+                      if (!hasData || totalPieValue <= 0) return ' Sem gastos registrados';
+                      const value = Number(context.parsed) || 0;
+                      const pct = ((value / totalPieValue) * 100).toLocaleString('pt-BR', {
+                        minimumFractionDigits: 1,
+                        maximumFractionDigits: 1
+                      });
+                      const formattedVal = value.toLocaleString('pt-BR', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                      });
+                      return ` R$ ${formattedVal} (${pct}%)`;
+                    }
+                  }
+                }
+              }
             }
           });
         }
