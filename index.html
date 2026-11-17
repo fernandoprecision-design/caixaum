@@ -725,6 +725,7 @@
       const pieChartInstance = useRef(null);
       const barChartInstance = useRef(null);
       const fixedCardDatesMigratedRef = useRef(false);
+      const futureStatusMigratedRef = useRef(false);
 
       useEffect(() => {
         const onReady = () => setFbReady(true);
@@ -832,6 +833,32 @@
         });
 
         fixedCardDatesMigratedRef.current = true;
+        if (changed) {
+          setTransactions(updatedList);
+          saveDataToFirestore(updatedList, categories, customRules, recurringMerchants, unpaidInvoiceReminder);
+        }
+      }, [user, transactions]);
+
+      useEffect(() => {
+        if (!user || !transactions.length || futureStatusMigratedRef.current) return;
+
+        const currentToday = getLocalTodayStr();
+        let changed = false;
+
+        const updatedList = transactions.map(t => {
+          if (t.date && t.date > currentToday && isTxPaid(t)) {
+            changed = true;
+            const isCard = isCreditCardPurchase(t);
+            return {
+              ...t,
+              isPaid: false,
+              isProjected: isCard ? true : Boolean(t.isProjected)
+            };
+          }
+          return t;
+        });
+
+        futureStatusMigratedRef.current = true;
         if (changed) {
           setTransactions(updatedList);
           saveDataToFirestore(updatedList, categories, customRules, recurringMerchants, unpaidInvoiceReminder);
@@ -1007,6 +1034,7 @@
           setRecurringMerchants([]);
           setUnpaidInvoiceReminder(null);
           fixedCardDatesMigratedRef.current = false;
+          futureStatusMigratedRef.current = false;
           return;
         }
         const { db, doc, onSnapshot } = window.FB;
