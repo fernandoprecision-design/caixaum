@@ -2060,7 +2060,7 @@
               recurrenceType: item.instInfo ? 'installment' : item.isRecurring ? 'fixed' : 'single',
               installmentCurrent: item.instInfo?.current,
               installmentTotal: item.instInfo?.total,
-              isPaid: isCardInvoice ? true : item.date <= currentToday,
+              isPaid: item.date <= currentToday,
               isProjected: false
             });
           }
@@ -2158,7 +2158,7 @@
               type: 'expense',
               category: 'Tarifas / Ajustes Fatura',
               paymentMethod: 'Cartão de Crédito',
-              isPaid: invoiceDueDate < currentToday,
+              isPaid: invoiceDueDate <= currentToday,
               notes: 'Incorporado ao total da fatura cobrada no mês atual'
             });
           }
@@ -2172,7 +2172,7 @@
               type: 'expense',
               category: 'Pagamento de Fatura',
               paymentMethod: 'Débito Bancário',
-              isPaid: invoiceDueDate < currentToday,
+              isPaid: invoiceDueDate <= currentToday,
               notes: 'Saída de Caixa no Vencimento'
             });
           }
@@ -2346,7 +2346,7 @@
                 recurrenceType: 'installment',
                 installmentCurrent: i + 1,
                 installmentTotal: formData.installments,
-                isPaid: i === 0 && startOffset === 0 ? Boolean(formData.isPaid) : false,
+                isPaid: i === 0 && startOffset === 0 ? Boolean(formData.isPaid) : computeDefaultIsPaid(itemDate, 'single', 0),
                 isProjected: isCard && !(i === 0 && startOffset === 0 && formData.isPaid),
                 notes: isCard ? `Parcela projetada do cartão (${label})` : `Parcela (${label})`
               });
@@ -2364,7 +2364,7 @@
                 date: itemDate,
                 paymentMethod: formData.paymentMethod,
                 recurrenceType: 'fixed',
-                isPaid: i === 0 ? Boolean(formData.isPaid) : false,
+                isPaid: i === 0 ? Boolean(formData.isPaid) : computeDefaultIsPaid(itemDate, 'single', 0),
                 isProjected: isCard && !(i === 0 && formData.isPaid),
                 notes: isCard ? 'Assinatura/recorrência projetada na fatura do cartão' : 'Despesa recorrente'
               });
@@ -4294,10 +4294,13 @@
                         value={formData.date}
                         onChange={e => {
                           const newDate = e.target.value;
+                          const isCard = formData.paymentMethod === 'Cartão de Crédito';
                           setFormData({
                             ...formData,
                             date: newDate,
-                            isPaid: editingId ? formData.isPaid : computeDefaultIsPaid(newDate, formData.recurrenceType, formData.installmentStartOffset)
+                            isPaid: isCard
+                              ? (newDate <= getLocalTodayStr() ? formData.isPaid : false)
+                              : computeDefaultIsPaid(newDate, formData.recurrenceType, formData.installmentStartOffset)
                           });
                         }}
                         class="w-full border rounded-xl p-2.5 text-sm"
@@ -4317,11 +4320,9 @@
                           ...formData,
                           paymentMethod: pm,
                           installmentStartOffset: nextOffset,
-                          isPaid: editingId
-                            ? formData.isPaid
-                            : isCardNow
-                              ? false
-                              : computeDefaultIsPaid(formData.date, formData.recurrenceType, nextOffset)
+                          isPaid: isCardNow
+                            ? (formData.date <= getLocalTodayStr() ? (editingId ? formData.isPaid : false) : false)
+                            : computeDefaultIsPaid(formData.date, formData.recurrenceType, nextOffset)
                         });
                       }}
                       class="w-full border rounded-xl p-2.5 text-sm font-medium text-slate-700"
