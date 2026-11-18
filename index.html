@@ -1061,6 +1061,24 @@
         if (window.lucide) window.lucide.createIcons();
       });
 
+      const stripUndefinedDeep = (val) => {
+        if (Array.isArray(val)) {
+          return val.map(item => stripUndefinedDeep(item));
+        }
+        if (val !== null && typeof val === 'object') {
+          const cleanObj = {};
+          Object.keys(val).forEach(k => {
+            if (val[k] !== undefined) {
+              cleanObj[k] = stripUndefinedDeep(val[k]);
+            }
+          });
+          return cleanObj;
+        }
+        return val;
+      };
+
+      const [saveErrorDetail, setSaveErrorDetail] = useState('');
+
       const saveDataToFirestore = async (
         newTransactions,
         newCategories,
@@ -1073,20 +1091,23 @@
         const { db, doc, setDoc } = window.FB;
         const userDocRef = doc(db, "fernance_users", user.uid);
         setSaveStatus('saving');
+        setSaveErrorDetail('');
         try {
-        await setDoc(userDocRef, {
-          transactions: newTransactions,
-          categories: newCategories,
-          customRules: newRules,
-          recurringMerchants: newRecurringMerchants,
-          unpaidInvoiceReminder: newInvoiceReminder,
-          defaultInvoiceDay: newDefaultInvoiceDay,
-          updatedAt: new Date().toISOString()
-        }, { merge: true });
-        setSaveStatus('saved');
-        setTimeout(() => setSaveStatus(s => (s === 'saved' ? 'idle' : s)), 2000);
+          const cleanPayload = stripUndefinedDeep({
+            transactions: newTransactions,
+            categories: newCategories,
+            customRules: newRules,
+            recurringMerchants: newRecurringMerchants,
+            unpaidInvoiceReminder: newInvoiceReminder,
+            defaultInvoiceDay: newDefaultInvoiceDay,
+            updatedAt: new Date().toISOString()
+          });
+          await setDoc(userDocRef, cleanPayload, { merge: true });
+          setSaveStatus('saved');
+          setTimeout(() => setSaveStatus(s => (s === 'saved' ? 'idle' : s)), 2000);
         } catch (err) {
           console.error('Erro ao salvar:', err);
+          setSaveErrorDetail(err?.code || err?.message || 'Erro desconhecido');
           setSaveStatus('error');
         }
       };
@@ -2086,8 +2107,7 @@
               category: item.category,
               paymentMethod: isCardInvoice ? 'Cartão de Crédito' : 'Conta Corrente',
               recurrenceType: item.instInfo ? 'installment' : item.isRecurring ? 'fixed' : 'single',
-              installmentCurrent: item.instInfo?.current,
-              installmentTotal: item.instInfo?.total,
+              ...(item.instInfo ? { installmentCurrent: item.instInfo.current, installmentTotal: item.instInfo.total } : {}),
               isPaid: item.date <= currentToday,
               isProjected: false
             });
@@ -2268,9 +2288,11 @@
 
           updatedTxList = transactions.map(t => {
             if (t.id === editingId) {
+              const { installmentCurrent: _ic, installmentTotal: _it, groupId: _gid, ...cleanExisting } = t;
+              const resolvedGroupId = newGroupId || _gid;
               return {
-                ...t,
-                groupId: newGroupId || t.groupId,
+                ...cleanExisting,
+                ...(resolvedGroupId ? { groupId: resolvedGroupId } : {}),
                 description: formData.recurrenceType === 'installment' && !detectInstallmentInfo(t.description)
                   ? `${baseCleanTitle}${currentLabel}`
                   : formData.description,
@@ -2280,10 +2302,11 @@
                 date: formData.date,
                 paymentMethod: formData.paymentMethod,
                 recurrenceType: formData.recurrenceType,
-                installmentCurrent: formData.recurrenceType === 'installment' ? currInst : undefined,
-                installmentTotal: formData.recurrenceType === 'installment' ? totalInst : undefined,
+                ...(formData.recurrenceType === 'installment'
+                  ? { installmentCurrent: currInst, installmentTotal: totalInst }
+                  : {}),
                 isPaid: Boolean(formData.isPaid),
-                isProjected: formData.isPaid ? false : t.isProjected
+                isProjected: formData.isPaid ? false : Boolean(t.isProjected)
               };
             }
             if (propagateSeriesChanges && t.groupId === oldTx.groupId && t.date >= oldTx.date) {
@@ -3062,8 +3085,12 @@
           </div>
 
           {saveStatus !== 'idle' && (
-            <div class={`fixed bottom-4 right-4 z-50 px-3 py-2 rounded-xl text-xs font-semibold shadow-lg ${saveStatus === 'error' ? 'bg-red-600 text-white' : saveStatus === 'saving' ? 'bg-slate-800 text-white' : 'bg-emerald-600 text-white'}`}>
-              {saveStatus === 'saving' ? 'Salvando…' : saveStatus === 'saved' ? 'Salvo ✓' : 'Falha ao salvar — verifique a conexão e tente de novo'}
+            <div class={`fixed bottom-4 right-4 z-50 px-3.5 py-2.5 rounded-xl text-xs font-semibold shadow-lg max-w-sm ${saveStatus === 'error' ? 'bg-red-600 text-white' : saveStatus === 'saving' ? 'bg-slate-800 text-white' : 'bg-emerald-600 text-white'}`}>
+              {saveStatus === 'saving'
+                ? 'Salvando…'
+                : saveStatus === 'saved'
+                  ? 'Salvo ✓'
+                  : `Falha ao salvar${saveErrorDetail ? ` (${saveErrorDetail})` : ''} — verifique a conexão e tente de novo`}
             </div>
           )}
 
