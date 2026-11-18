@@ -27,6 +27,18 @@
     .tabular-nums { font-variant-numeric: tabular-nums; }
     .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
     .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    @keyframes tickerMarquee {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(-50%); }
+    }
+    .animate-ticker {
+      display: flex;
+      width: max-content;
+      animation: tickerMarquee 36s linear infinite;
+    }
+    .ticker-wrapper:hover .animate-ticker {
+      animation-play-state: paused;
+    }
   </style>
 </head>
 <body class="bg-slate-50 text-slate-900">
@@ -437,6 +449,511 @@
       'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'
     ];
 
+    const DEFAULT_MARKET_ASSETS = [
+      { id: 'USD-BRL', symbol: 'USD/BRL', name: 'Dólar Comercial', kind: 'currency' },
+      { id: 'EUR-BRL', symbol: 'EUR/BRL', name: 'Euro', kind: 'currency' },
+      { id: 'BTC-BRL', symbol: 'BTC/BRL', name: 'Bitcoin', kind: 'crypto' },
+      { id: '^BVSP', symbol: 'IBOV', name: 'Ibovespa', kind: 'index' },
+      { id: 'PETR4', symbol: 'PETR4', name: 'Petrobras PN', kind: 'stock' },
+      { id: 'VALE3', symbol: 'VALE3', name: 'Vale ON', kind: 'stock' },
+      { id: 'ITUB4', symbol: 'ITUB4', name: 'Itaú Unibanco', kind: 'stock' }
+    ];
+
+    const POPULAR_MARKET_PRESETS = [
+      { id: 'USD-BRL', symbol: 'USD/BRL', name: 'Dólar Comercial', kind: 'currency' },
+      { id: 'EUR-BRL', symbol: 'EUR/BRL', name: 'Euro', kind: 'currency' },
+      { id: 'GBP-BRL', symbol: 'GBP/BRL', name: 'Libra Esterlina', kind: 'currency' },
+      { id: 'BTC-BRL', symbol: 'BTC/BRL', name: 'Bitcoin', kind: 'crypto' },
+      { id: 'ETH-BRL', symbol: 'ETH/BRL', name: 'Ethereum', kind: 'crypto' },
+      { id: '^BVSP', symbol: 'IBOV', name: 'Ibovespa', kind: 'index' },
+      { id: 'PETR4', symbol: 'PETR4', name: 'Petrobras PN', kind: 'stock' },
+      { id: 'VALE3', symbol: 'VALE3', name: 'Vale ON', kind: 'stock' },
+      { id: 'ITUB4', symbol: 'ITUB4', name: 'Itaú Unibanco', kind: 'stock' },
+      { id: 'BBAS3', symbol: 'BBAS3', name: 'Banco do Brasil', kind: 'stock' },
+      { id: 'WEGE3', symbol: 'WEGE3', name: 'WEG ON', kind: 'stock' },
+      { id: 'MGLU3', symbol: 'MGLU3', name: 'Magazine Luiza', kind: 'stock' },
+      { id: 'IVVB11', symbol: 'IVVB11', name: 'ETF S&P 500', kind: 'stock' },
+      { id: 'MXRF11', symbol: 'MXRF11', name: 'FII Maxi Renda', kind: 'stock' }
+    ];
+
+    function inferAssetKind(rawCode) {
+      const clean = (rawCode || '').trim().toUpperCase();
+      if (clean === 'IBOV' || clean === '^BVSP') return { id: '^BVSP', symbol: 'IBOV', kind: 'index' };
+      if (clean.includes('-BRL')) {
+        const prefix = clean.split('-')[0];
+        const isCrypto = ['BTC', 'ETH', 'SOL', 'USDT', 'XRP', 'DOGE'].includes(prefix);
+        return { id: clean, symbol: `${prefix}/BRL`, kind: isCrypto ? 'crypto' : 'currency' };
+      }
+      if (['USD', 'EUR', 'GBP', 'ARS', 'CAD', 'CHF', 'JPY', 'CNY'].includes(clean)) {
+        return { id: `${clean}-BRL`, symbol: `${clean}/BRL`, kind: 'currency' };
+      }
+      if (['BTC', 'ETH', 'SOL', 'USDT', 'XRP'].includes(clean)) {
+        return { id: `${clean}-BRL`, symbol: `${clean}/BRL`, kind: 'crypto' };
+      }
+      const stockClean = clean.replace(/\.SA$/, '');
+      return { id: stockClean, symbol: stockClean, kind: 'stock' };
+    }
+
+    function MarketTickerStrip({ assets, onUpdateAssets }) {
+      const [quotes, setQuotes] = useState({});
+      const [loadingQuotes, setLoadingQuotes] = useState(false);
+      const [lastSyncTime, setLastSyncTime] = useState('');
+      const [isManageOpen, setIsManageOpen] = useState(false);
+
+      const [editingAssetId, setEditingAssetId] = useState(null);
+      const [assetCodeInput, setAssetCodeInput] = useState('');
+      const [assetNameInput, setAssetNameInput] = useState('');
+      const [assetFormError, setAssetFormError] = useState('');
+
+      const activeAssets = Array.isArray(assets) && assets.length > 0 ? assets : DEFAULT_MARKET_ASSETS;
+
+      const fetchAllQuotes = async () => {
+        if (!activeAssets.length) return;
+        setLoadingQuotes(true);
+        const nextQuotes = {};
+
+        const currencyAssets = activeAssets.filter(a => a.kind === 'currency' || a.kind === 'crypto');
+        const stockAssets = activeAssets.filter(a => a.kind === 'stock' || a.kind === 'index');
+
+        if (currencyAssets.length > 0) {
+          try {
+            const pairs = currencyAssets.map(a => a.id).join(',');
+            const res = await fetch(`https://economia.awesomeapi.com.br/json/last/${encodeURIComponent(pairs)}`);
+            if (res.ok) {
+              const data = await res.json();
+              currencyAssets.forEach(asset => {
+                const key = asset.id.replace('-', '');
+                const item = data[key];
+                if (item && item.bid) {
+                  const price = parseFloat(item.bid);
+                  const pct = parseFloat(item.pctChange || '0');
+                  nextQuotes[asset.id] = { price, pctChange: pct, ok: true };
+                }
+              });
+            }
+          } catch (e) {
+            console.warn('Falha ao consultar moedas:', e);
+          }
+        }
+
+        if (stockAssets.length > 0) {
+          await Promise.all(
+            stockAssets.map(async (asset) => {
+              try {
+                const res = await fetch(`https://brapi.dev/api/quote/${encodeURIComponent(asset.id)}`);
+                if (res.ok) {
+                  const data = await res.json();
+                  const result = data?.results?.[0];
+                  if (result && typeof result.regularMarketPrice === 'number') {
+                    nextQuotes[asset.id] = {
+                      price: result.regularMarketPrice,
+                      pctChange: Number(result.regularMarketChangePercent || 0),
+                      ok: true
+                    };
+                  }
+                }
+              } catch (e) {
+                console.warn(`Falha ao consultar ativo ${asset.id}:`, e);
+              }
+            })
+          );
+        }
+
+        setQuotes(prev => ({ ...prev, ...nextQuotes }));
+        const now = new Date();
+        setLastSyncTime(`${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`);
+        setLoadingQuotes(false);
+      };
+
+      useEffect(() => {
+        fetchAllQuotes();
+        const interval = setInterval(fetchAllQuotes, 180000);
+        return () => clearInterval(interval);
+      }, [JSON.stringify(activeAssets.map(a => a.id))]);
+
+      const formatAssetPrice = (asset, q) => {
+        if (!q || typeof q.price !== 'number' || isNaN(q.price)) return '—';
+        if (asset.kind === 'index') {
+          return `${Math.round(q.price).toLocaleString('pt-BR')} pts`;
+        }
+        if (asset.kind === 'crypto') {
+          return `R$ ${q.price.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+        }
+        return `R$ ${q.price.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      };
+
+      const handleSaveAssetForm = (e) => {
+        e.preventDefault();
+        setAssetFormError('');
+        const rawCode = assetCodeInput.trim().toUpperCase();
+        if (!rawCode) {
+          setAssetFormError('Informe o código do ativo (ex: PETR4, USD, BTC, BBAS3).');
+          return;
+        }
+
+        const inferred = inferAssetKind(rawCode);
+        const cleanName = assetNameInput.trim() || inferred.symbol;
+
+        if (editingAssetId) {
+          const duplicate = activeAssets.find(a => a.id === inferred.id && a.id !== editingAssetId);
+          if (duplicate) {
+            setAssetFormError(`O ativo ${inferred.symbol} já está na sua lista.`);
+            return;
+          }
+          const updated = activeAssets.map(a =>
+            a.id === editingAssetId
+              ? { id: inferred.id, symbol: inferred.symbol, name: cleanName, kind: inferred.kind }
+              : a
+          );
+          onUpdateAssets(updated);
+          setEditingAssetId(null);
+          setAssetCodeInput('');
+          setAssetNameInput('');
+        } else {
+          if (activeAssets.some(a => a.id === inferred.id)) {
+            setAssetFormError(`O ativo ${inferred.symbol} já está na sua faixa.`);
+            return;
+          }
+          const updated = [
+            ...activeAssets,
+            { id: inferred.id, symbol: inferred.symbol, name: cleanName, kind: inferred.kind }
+          ];
+          onUpdateAssets(updated);
+          setAssetCodeInput('');
+          setAssetNameInput('');
+        }
+      };
+
+      const handleEditAssetClick = (asset) => {
+        setAssetFormError('');
+        setEditingAssetId(asset.id);
+        setAssetCodeInput(asset.id === '^BVSP' ? 'IBOV' : asset.id.replace('-BRL', ''));
+        setAssetNameInput(asset.name);
+      };
+
+      const handleDeleteAsset = (id) => {
+        if (activeAssets.length <= 1) {
+          setAssetFormError('Mantenha pelo menos 1 ativo na faixa.');
+          return;
+        }
+        const updated = activeAssets.filter(a => a.id !== id);
+        onUpdateAssets(updated);
+        if (editingAssetId === id) {
+          setEditingAssetId(null);
+          setAssetCodeInput('');
+          setAssetNameInput('');
+        }
+      };
+
+      const handleTogglePreset = (preset) => {
+        setAssetFormError('');
+        const exists = activeAssets.some(a => a.id === preset.id);
+        if (exists) {
+          if (activeAssets.length <= 1) return;
+          onUpdateAssets(activeAssets.filter(a => a.id !== preset.id));
+        } else {
+          onUpdateAssets([...activeAssets, preset]);
+        }
+      };
+
+      const handleRestoreDefaults = () => {
+        setAssetFormError('');
+        setEditingAssetId(null);
+        setAssetCodeInput('');
+        setAssetNameInput('');
+        onUpdateAssets(DEFAULT_MARKET_ASSETS);
+      };
+
+      const renderTickerItems = (suffixKey) =>
+        activeAssets.map((asset) => {
+          const q = quotes[asset.id];
+          const pct = q ? q.pctChange : null;
+          const isPositive = pct !== null && pct > 0.005;
+          const isNegative = pct !== null && pct < -0.005;
+
+          return (
+            <div
+              key={`${asset.id}_${suffixKey}`}
+              class="inline-flex items-center space-x-2.5 px-4 py-1.5 border-r border-slate-800 shrink-0"
+            >
+              <div class="flex flex-col">
+                <div class="flex items-center space-x-1.5">
+                  <span class="text-xs font-extrabold tracking-wide text-white">{asset.symbol}</span>
+                  <span class="text-[10px] text-slate-400 hidden sm:inline">{asset.name}</span>
+                </div>
+              </div>
+              <span class="text-xs font-bold text-slate-100 tabular-nums">
+                {formatAssetPrice(asset, q)}
+              </span>
+              {pct !== null ? (
+                <span
+                  class={`text-[11px] font-bold px-1.5 py-0.5 rounded tabular-nums ${
+                    isPositive
+                      ? 'bg-emerald-500/20 text-emerald-400'
+                      : isNegative
+                        ? 'bg-rose-500/20 text-rose-400'
+                        : 'bg-slate-700/60 text-slate-300'
+                  }`}
+                >
+                  {isPositive ? '▲' : isNegative ? '▼' : '•'} {pct > 0 ? '+' : ''}
+                  {pct.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%
+                </span>
+              ) : (
+                <span class="text-[10px] text-slate-500 tabular-nums">...</span>
+              )}
+            </div>
+          );
+        });
+
+      return (
+        <>
+          <div class="bg-slate-900 text-white rounded-2xl border border-slate-800 shadow-md overflow-hidden flex items-center justify-between">
+            {/* Selo Esquerdo */}
+            <div class="bg-slate-950 px-3.5 py-2.5 border-r border-slate-800 flex items-center space-x-2 shrink-0 z-10">
+              <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span class="text-[11px] font-extrabold uppercase tracking-wider text-emerald-400">Mercado</span>
+              {lastSyncTime && (
+                <span class="text-[10px] text-slate-500 hidden md:inline tabular-nums">{lastSyncTime}</span>
+              )}
+            </div>
+
+            {/* Faixa Rolante Estilo Corretora */}
+            <div class="flex-1 overflow-hidden ticker-wrapper relative py-1">
+              <div class="animate-ticker">
+                <div class="flex items-center">{renderTickerItems('a')}</div>
+                <div class="flex items-center" aria-hidden="true">{renderTickerItems('b')}</div>
+              </div>
+            </div>
+
+            {/* Botões Direitos (Atualizar + Personalizar Ativos) */}
+            <div class="bg-slate-950 px-2.5 py-2 border-l border-slate-800 flex items-center space-x-1.5 shrink-0 z-10">
+              <button
+                type="button"
+                onClick={fetchAllQuotes}
+                disabled={loadingQuotes}
+                class="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition disabled:opacity-50"
+                title="Atualizar cotações agora"
+              >
+                <svg class={`w-3.5 h-3.5 ${loadingQuotes ? 'animate-spin text-emerald-400' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="23 4 23 10 17 10"></polyline>
+                  <polyline points="1 20 1 14 7 14"></polyline>
+                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                </svg>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setAssetFormError('');
+                  setEditingAssetId(null);
+                  setAssetCodeInput('');
+                  setAssetNameInput('');
+                  setIsManageOpen(true);
+                }}
+                class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-emerald-600 text-slate-200 hover:text-white text-[11px] font-bold flex items-center space-x-1 transition"
+                title="Incluir, alterar ou excluir moedas e ações da faixa"
+              >
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="4" y1="21" x2="4" y2="14"></line>
+                  <line x1="4" y1="10" x2="4" y2="3"></line>
+                  <line x1="12" y1="21" x2="12" y2="12"></line>
+                  <line x1="12" y1="8" x2="12" y2="3"></line>
+                  <line x1="20" y1="21" x2="20" y2="16"></line>
+                  <line x1="20" y1="12" x2="20" y2="3"></line>
+                  <line x1="1" y1="14" x2="7" y2="14"></line>
+                  <line x1="9" y1="8" x2="15" y2="8"></line>
+                  <line x1="17" y1="16" x2="23" y2="16"></line>
+                </svg>
+                <span class="hidden sm:inline">Ativos</span>
+              </button>
+            </div>
+          </div>
+
+          {/* MODAL DE PERSONALIZAÇÃO DE ATIVOS DO TICKER */}
+          {isManageOpen && (
+            <div class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+              <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5">
+                <div class="flex justify-between items-center border-b pb-3">
+                  <div>
+                    <h3 class="font-bold text-slate-800 text-lg">Personalizar Faixa de Cotações</h3>
+                    <p class="text-xs text-slate-500">Inclua, edite ou remova moedas, criptos e ações da B3.</p>
+                  </div>
+                  <button onClick={() => setIsManageOpen(false)} class="text-slate-400 hover:text-slate-700">✕</button>
+                </div>
+
+                {/* Formulário de Inclusão / Edição */}
+                <form onSubmit={handleSaveAssetForm} class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                  <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                      {editingAssetId ? '✏️ Alterando Ativo' : '➕ Adicionar Novo Ativo'}
+                    </span>
+                    {editingAssetId && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingAssetId(null);
+                          setAssetCodeInput('');
+                          setAssetNameInput('');
+                          setAssetFormError('');
+                        }}
+                        class="text-xs text-slate-500 hover:text-slate-700 font-semibold"
+                      >
+                        Cancelar edição
+                      </button>
+                    )}
+                  </div>
+
+                  {assetFormError && (
+                    <p class="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-2.5 py-1.5 font-medium">
+                      {assetFormError}
+                    </p>
+                  )}
+
+                  <div class="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+                    <div class="sm:col-span-5">
+                      <label class="block text-[11px] font-semibold text-slate-600 mb-1">Código / Ticker</label>
+                      <input
+                        type="text"
+                        required
+                        value={assetCodeInput}
+                        onChange={e => setAssetCodeInput(e.target.value)}
+                        placeholder="Ex: BBAS3, USD, BTC"
+                        class="w-full border rounded-xl p-2 text-sm bg-white uppercase font-bold"
+                      />
+                    </div>
+                    <div class="sm:col-span-7">
+                      <label class="block text-[11px] font-semibold text-slate-600 mb-1">Nome de Exibição</label>
+                      <input
+                        type="text"
+                        value={assetNameInput}
+                        onChange={e => setAssetNameInput(e.target.value)}
+                        placeholder="Ex: Banco do Brasil"
+                        class="w-full border rounded-xl p-2 text-sm bg-white"
+                      />
+                    </div>
+                  </div>
+
+                  <div class="flex items-center justify-between pt-1">
+                    <span class="text-[11px] text-slate-400">
+                      Aceita moedas (USD, EUR, GBP), cripto (BTC, ETH) e ações B3 (PETR4, WEGE3, MXRF11).
+                    </span>
+                    <button
+                      type="submit"
+                      class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition shrink-0 ml-2"
+                    >
+                      {editingAssetId ? 'Salvar Alteração' : 'Incluir'}
+                    </button>
+                  </div>
+                </form>
+
+                {/* Atalhos Rápidos */}
+                <div class="space-y-1.5">
+                  <span class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                    Atalhos Rápidos (Clique para ativar/desativar)
+                  </span>
+                  <div class="flex flex-wrap gap-1.5">
+                    {POPULAR_MARKET_PRESETS.map(preset => {
+                      const isSelected = activeAssets.some(a => a.id === preset.id);
+                      return (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => handleTogglePreset(preset)}
+                          class={`px-2.5 py-1 rounded-lg text-xs font-bold border transition ${
+                            isSelected
+                              ? 'bg-emerald-600 text-white border-emerald-600'
+                              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          {isSelected ? '✓ ' : '+ '}
+                          {preset.symbol}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Lista de Ativos Ativos na Faixa */}
+                <div class="space-y-2 max-h-52 overflow-y-auto pr-1 custom-scrollbar">
+                  <span class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                    Ativos Exibidos na Faixa ({activeAssets.length})
+                  </span>
+                  {activeAssets.map(asset => {
+                    const q = quotes[asset.id];
+                    const isBeingEdited = editingAssetId === asset.id;
+                    return (
+                      <div
+                        key={asset.id}
+                        class={`flex items-center justify-between p-2.5 rounded-xl border ${
+                          isBeingEdited ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-slate-200'
+                        }`}
+                      >
+                        <div>
+                          <div class="flex items-center space-x-2">
+                            <span class="text-xs font-extrabold text-slate-900">{asset.symbol}</span>
+                            <span class="text-xs text-slate-500">{asset.name}</span>
+                            <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+                              {asset.kind === 'currency' ? 'Moeda' : asset.kind === 'crypto' ? 'Cripto' : asset.kind === 'index' ? 'Índice' : 'Ação/FII'}
+                            </span>
+                          </div>
+                          {q && (
+                            <span class="text-[11px] text-slate-400 tabular-nums">
+                              Cotação atual: {formatAssetPrice(asset, q)} ({q.pctChange > 0 ? '+' : ''}{q.pctChange.toFixed(2)}%)
+                            </span>
+                          )}
+                        </div>
+
+                        <div class="flex items-center space-x-1">
+                          <button
+                            type="button"
+                            onClick={() => handleEditAssetClick(asset)}
+                            class="p-1.5 text-slate-500 hover:text-emerald-600 rounded-lg hover:bg-slate-100 transition"
+                            title="Alterar ativo"
+                          >
+                            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteAsset(asset.id)}
+                            class="p-1.5 text-slate-500 hover:text-red-600 rounded-lg hover:bg-slate-100 transition"
+                            title="Excluir ativo da faixa"
+                          >
+                            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="3 6 5 6 21 6"></polyline>
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div class="pt-3 flex items-center justify-between border-t">
+                  <button
+                    type="button"
+                    onClick={handleRestoreDefaults}
+                    class="text-xs font-bold text-slate-500 hover:text-slate-800 underline"
+                  >
+                    Restaurar Padrão
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsManageOpen(false)}
+                    class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-sm transition"
+                  >
+                    Concluir
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      );
+    }
+
     function MonthSelector({ value, onChange }) {
       const [isOpen, setIsOpen] = useState(false);
       const containerRef = useRef(null);
@@ -652,6 +1169,7 @@
       const [recurringMerchants, setRecurringMerchants] = useState([]);
       const [unpaidInvoiceReminder, setUnpaidInvoiceReminder] = useState(null);
       const [defaultInvoiceDay, setDefaultInvoiceDay] = useState('10');
+      const [marketAssets, setMarketAssets] = useState(DEFAULT_MARKET_ASSETS);
       const [saveStatus, setSaveStatus] = useState('idle');
 
       const [isModalOpen, setIsModalOpen] = useState(false);
@@ -1033,6 +1551,7 @@
           setCustomRules({});
           setRecurringMerchants([]);
           setUnpaidInvoiceReminder(null);
+          setMarketAssets(DEFAULT_MARKET_ASSETS);
           fixedCardDatesMigratedRef.current = false;
           futureStatusMigratedRef.current = false;
           return;
@@ -1049,6 +1568,7 @@
             if (data.recurringMerchants) setRecurringMerchants(data.recurringMerchants);
             setUnpaidInvoiceReminder(data.unpaidInvoiceReminder || null);
             if (data.defaultInvoiceDay) setDefaultInvoiceDay(String(data.defaultInvoiceDay));
+            if (Array.isArray(data.marketAssets) && data.marketAssets.length > 0) setMarketAssets(data.marketAssets);
           } else {
             saveDataToFirestore([], INITIAL_CATEGORIES, {}, [], null, '10');
           }
@@ -1085,7 +1605,8 @@
         newRules = customRules,
         newRecurringMerchants = recurringMerchants,
         newInvoiceReminder = unpaidInvoiceReminder,
-        newDefaultInvoiceDay = defaultInvoiceDay
+        newDefaultInvoiceDay = defaultInvoiceDay,
+        newMarketAssets = marketAssets
       ) => {
         if (!user || !window.FB) return;
         const { db, doc, setDoc } = window.FB;
@@ -1100,6 +1621,7 @@
             recurringMerchants: newRecurringMerchants,
             unpaidInvoiceReminder: newInvoiceReminder,
             defaultInvoiceDay: newDefaultInvoiceDay,
+            marketAssets: newMarketAssets,
             updatedAt: new Date().toISOString()
           });
           await setDoc(userDocRef, cleanPayload, { merge: true });
@@ -3184,7 +3706,23 @@
             )}
 
             {activeTab === 'dashboard' && (
-              <div class="space-y-8">
+              <div class="space-y-6">
+                <MarketTickerStrip
+                  assets={marketAssets}
+                  onUpdateAssets={(nextAssets) => {
+                    setMarketAssets(nextAssets);
+                    saveDataToFirestore(
+                      transactions,
+                      categories,
+                      customRules,
+                      recurringMerchants,
+                      unpaidInvoiceReminder,
+                      defaultInvoiceDay,
+                      nextAssets
+                    );
+                  }}
+                />
+
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
                   <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                     <div class="flex items-center justify-between">
