@@ -1167,7 +1167,7 @@
       const catByName = {}; categories.forEach(c => { catByName[c.name] = c; });
       const sums = {};
       transactions.forEach(t => {
-        if (t.type !== 'expense' || t.category === 'Pagamento de Fatura') return;
+        if (t.type !== 'expense') return;
         const c = catByName[t.category]; if (c && c.isIncome) return;
         sums[t.category] = (sums[t.category] || 0) + t.amount;
       });
