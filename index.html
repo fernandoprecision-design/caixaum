@@ -27,6 +27,18 @@
     .tabular-nums { font-variant-numeric: tabular-nums; }
     .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
     .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    @keyframes tickerMarquee {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(-50%); }
+    }
+    .animate-ticker {
+      display: flex;
+      width: max-content;
+      animation: tickerMarquee 52s linear infinite;
+    }
+    .ticker-wrapper:hover .animate-ticker {
+      animation-play-state: paused;
+    }
   </style>
 </head>
 <body class="bg-slate-50 text-slate-900">
@@ -112,15 +124,15 @@
     );
 
     const INITIAL_CATEGORIES = [
-      { id: 'cat_1', name: 'Alimentação & Mercado', color: '#10B981', limit: 1500 },
-      { id: 'cat_2', name: 'Transporte & Combustível', color: '#3B82F6', limit: 800 },
-      { id: 'cat_3', name: 'Moradia & Contas Fixas', color: '#8B5CF6', limit: 2500 },
-      { id: 'cat_4', name: 'Lazer & Assinaturas', color: '#EC4899', limit: 600 },
-      { id: 'cat_5', name: 'Saúde & Bem-estar', color: '#F59E0B', limit: 500 },
-      { id: 'cat_6', name: 'Pagamento de Fatura', color: '#6366F1', limit: 0, isSystem: true },
-      { id: 'cat_7', name: 'Renda / Salário', color: '#059669', limit: 0, isIncome: true },
-      { id: 'cat_8', name: 'Outros / Serviços', color: '#64748B', limit: 700 },
-      { id: 'cat_9', name: 'Tarifas / Ajustes Fatura', color: '#F97316', limit: 200 }
+      { id: 'cat_1', name: 'Alimentação & Mercado', color: '#10B981', limit: 1500, type: 'necessidade' },
+      { id: 'cat_2', name: 'Transporte & Combustível', color: '#3B82F6', limit: 800, type: 'necessidade' },
+      { id: 'cat_3', name: 'Moradia & Contas Fixas', color: '#8B5CF6', limit: 2500, type: 'necessidade' },
+      { id: 'cat_4', name: 'Lazer & Assinaturas', color: '#EC4899', limit: 600, type: 'desejo' },
+      { id: 'cat_5', name: 'Saúde & Bem-estar', color: '#F59E0B', limit: 500, type: 'necessidade' },
+      { id: 'cat_6', name: 'Pagamento de Fatura', color: '#6366F1', limit: 0, isSystem: true, type: 'necessidade' },
+      { id: 'cat_7', name: 'Renda / Salário', color: '#059669', limit: 0, isIncome: true, type: 'poupanca' },
+      { id: 'cat_8', name: 'Outros / Serviços', color: '#64748B', limit: 700, type: 'desejo' },
+      { id: 'cat_9', name: 'Tarifas / Ajustes Fatura', color: '#F97316', limit: 200, type: 'divida' }
     ];
 
     const AUTO_CATEGORIZE_RULES = [
@@ -141,12 +153,6 @@
       'tim', 'oi', 'seguro', 'youse', 'assinatura', 'mensalidade', 'globoplay', 'deezer', 'audible', 'playstation'
     ];
 
-    const MONTH_NAMES_SHORT = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-    const MONTH_NAMES_FULL = [
-      'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-      'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
-    ];
-
     const brl = (v) => 'R$ ' + (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const nowId = () => `${Date.now()}${Math.random().toString(36).slice(2, 7)}`;
     const hasKw = (text, kw) => kw.length <= 4 ? (' ' + text.replace(/[^a-z0-9]+/g, ' ') + ' ').includes(' ' + kw + ' ') : text.includes(kw);
@@ -157,12 +163,6 @@
       const m = String(now.getMonth() + 1).padStart(2, '0');
       const d = String(now.getDate()).padStart(2, '0');
       return `${y}-${m}-${d}`;
-    }
-
-    function addMonthsToYM(ymStr, delta) {
-      const [y, m] = ymStr.split('-').map(Number);
-      const d = new Date(y, (m - 1) + delta, 1);
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     }
 
     function addMonthsPreservingDay(dateStr, monthsToAdd) {
@@ -440,6 +440,692 @@
       return fallbackDate;
     }
 
+    const MONTH_NAMES_PT = [
+      'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+      'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+    ];
+    const MONTH_SHORT_PT = [
+      'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
+      'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'
+    ];
+
+    const DEFAULT_MARKET_ASSETS = [
+      { id: 'USD-BRL', symbol: 'USD/BRL', name: 'Dólar Comercial', kind: 'currency' },
+      { id: 'EUR-BRL', symbol: 'EUR/BRL', name: 'Euro', kind: 'currency' },
+      { id: 'BTC-BRL', symbol: 'BTC/BRL', name: 'Bitcoin', kind: 'crypto' },
+      { id: '^BVSP', symbol: 'IBOV', name: 'Ibovespa', kind: 'index' },
+      { id: 'PETR4', symbol: 'PETR4', name: 'Petrobras PN', kind: 'stock' },
+      { id: 'VALE3', symbol: 'VALE3', name: 'Vale ON', kind: 'stock' },
+      { id: 'ITUB4', symbol: 'ITUB4', name: 'Itaú Unibanco', kind: 'stock' }
+    ];
+
+    const POPULAR_MARKET_PRESETS = [
+      { id: 'USD-BRL', symbol: 'USD/BRL', name: 'Dólar Comercial', kind: 'currency' },
+      { id: 'EUR-BRL', symbol: 'EUR/BRL', name: 'Euro', kind: 'currency' },
+      { id: 'GBP-BRL', symbol: 'GBP/BRL', name: 'Libra Esterlina', kind: 'currency' },
+      { id: 'BTC-BRL', symbol: 'BTC/BRL', name: 'Bitcoin', kind: 'crypto' },
+      { id: 'ETH-BRL', symbol: 'ETH/BRL', name: 'Ethereum', kind: 'crypto' },
+      { id: '^BVSP', symbol: 'IBOV', name: 'Ibovespa', kind: 'index' },
+      { id: 'PETR4', symbol: 'PETR4', name: 'Petrobras PN', kind: 'stock' },
+      { id: 'VALE3', symbol: 'VALE3', name: 'Vale ON', kind: 'stock' },
+      { id: 'ITUB4', symbol: 'ITUB4', name: 'Itaú Unibanco', kind: 'stock' },
+      { id: 'BBAS3', symbol: 'BBAS3', name: 'Banco do Brasil', kind: 'stock' },
+      { id: 'WEGE3', symbol: 'WEGE3', name: 'WEG ON', kind: 'stock' },
+      { id: 'MGLU3', symbol: 'MGLU3', name: 'Magazine Luiza', kind: 'stock' },
+      { id: 'IVVB11', symbol: 'IVVB11', name: 'ETF S&P 500', kind: 'stock' },
+      { id: 'MXRF11', symbol: 'MXRF11', name: 'FII Maxi Renda', kind: 'stock' }
+    ];
+
+    function inferAssetKind(rawCode) {
+      const clean = (rawCode || '').trim().toUpperCase();
+      if (clean === 'IBOV' || clean === '^BVSP') return { id: '^BVSP', symbol: 'IBOV', kind: 'index' };
+      if (clean.includes('-BRL')) {
+        const prefix = clean.split('-')[0];
+        const isCrypto = ['BTC', 'ETH', 'SOL', 'USDT', 'XRP', 'DOGE'].includes(prefix);
+        return { id: clean, symbol: `${prefix}/BRL`, kind: isCrypto ? 'crypto' : 'currency' };
+      }
+      if (['USD', 'EUR', 'GBP', 'ARS', 'CAD', 'CHF', 'JPY', 'CNY'].includes(clean)) {
+        return { id: `${clean}-BRL`, symbol: `${clean}/BRL`, kind: 'currency' };
+      }
+      if (['BTC', 'ETH', 'SOL', 'USDT', 'XRP'].includes(clean)) {
+        return { id: `${clean}-BRL`, symbol: `${clean}/BRL`, kind: 'crypto' };
+      }
+      const stockClean = clean.replace(/\.SA$/, '');
+      return { id: stockClean, symbol: stockClean, kind: 'stock' };
+    }
+
+    function MarketTickerStrip({ assets, onUpdateAssets }) {
+      const [quotes, setQuotes] = useState({});
+      const [loadingQuotes, setLoadingQuotes] = useState(false);
+      const [lastSyncTime, setLastSyncTime] = useState('');
+      const [isManageOpen, setIsManageOpen] = useState(false);
+
+      const [editingAssetId, setEditingAssetId] = useState(null);
+      const [assetCodeInput, setAssetCodeInput] = useState('');
+      const [assetNameInput, setAssetNameInput] = useState('');
+      const [assetFormError, setAssetFormError] = useState('');
+
+      const activeAssets = Array.isArray(assets) && assets.length > 0 ? assets : DEFAULT_MARKET_ASSETS;
+
+      const fetchAllQuotes = async () => {
+        if (!activeAssets.length) return;
+        setLoadingQuotes(true);
+        const nextQuotes = {};
+
+        const currencyAssets = activeAssets.filter(a => a.kind === 'currency' || a.kind === 'crypto');
+        const stockAssets = activeAssets.filter(a => a.kind === 'stock' || a.kind === 'index');
+
+        if (currencyAssets.length > 0) {
+          try {
+            const pairs = currencyAssets.map(a => a.id).join(',');
+            const res = await fetch(`https://economia.awesomeapi.com.br/json/last/${encodeURIComponent(pairs)}`);
+            if (res.ok) {
+              const data = await res.json();
+              currencyAssets.forEach(asset => {
+                const key = asset.id.replace('-', '');
+                const item = data[key];
+                if (item && item.bid) {
+                  const price = parseFloat(item.bid);
+                  const pct = parseFloat(item.pctChange || '0');
+                  nextQuotes[asset.id] = { price, pctChange: pct, ok: true };
+                }
+              });
+            }
+          } catch (e) {
+            console.warn('Falha ao consultar moedas:', e);
+          }
+        }
+
+        if (stockAssets.length > 0) {
+          await Promise.all(
+            stockAssets.map(async (asset) => {
+              try {
+                const res = await fetch(`https://brapi.dev/api/quote/${encodeURIComponent(asset.id)}`);
+                if (res.ok) {
+                  const data = await res.json();
+                  const result = data?.results?.[0];
+                  if (result && typeof result.regularMarketPrice === 'number') {
+                    nextQuotes[asset.id] = {
+                      price: result.regularMarketPrice,
+                      pctChange: Number(result.regularMarketChangePercent || 0),
+                      ok: true
+                    };
+                  }
+                }
+              } catch (e) {
+                console.warn(`Falha ao consultar ativo ${asset.id}:`, e);
+              }
+            })
+          );
+        }
+
+        setQuotes(prev => ({ ...prev, ...nextQuotes }));
+        const now = new Date();
+        setLastSyncTime(`${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`);
+        setLoadingQuotes(false);
+      };
+
+      useEffect(() => {
+        fetchAllQuotes();
+        const interval = setInterval(fetchAllQuotes, 60000);
+        return () => clearInterval(interval);
+      }, [JSON.stringify(activeAssets.map(a => a.id))]);
+
+      const formatAssetPrice = (asset, q) => {
+        if (!q || typeof q.price !== 'number' || isNaN(q.price)) return '—';
+        if (asset.kind === 'index') {
+          return `${Math.round(q.price).toLocaleString('pt-BR')} pts`;
+        }
+        if (asset.kind === 'crypto') {
+          return `R$ ${q.price.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+        }
+        return `R$ ${q.price.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      };
+
+      const handleSaveAssetForm = (e) => {
+        e.preventDefault();
+        setAssetFormError('');
+        const rawCode = assetCodeInput.trim().toUpperCase();
+        if (!rawCode) {
+          setAssetFormError('Informe o código do ativo (ex: PETR4, USD, BTC, BBAS3).');
+          return;
+        }
+
+        const inferred = inferAssetKind(rawCode);
+        const cleanName = assetNameInput.trim() || inferred.symbol;
+
+        if (editingAssetId) {
+          const duplicate = activeAssets.find(a => a.id === inferred.id && a.id !== editingAssetId);
+          if (duplicate) {
+            setAssetFormError(`O ativo ${inferred.symbol} já está na sua lista.`);
+            return;
+          }
+          const updated = activeAssets.map(a =>
+            a.id === editingAssetId
+              ? { id: inferred.id, symbol: inferred.symbol, name: cleanName, kind: inferred.kind }
+              : a
+          );
+          onUpdateAssets(updated);
+          setEditingAssetId(null);
+          setAssetCodeInput('');
+          setAssetNameInput('');
+        } else {
+          if (activeAssets.some(a => a.id === inferred.id)) {
+            setAssetFormError(`O ativo ${inferred.symbol} já está na sua faixa.`);
+            return;
+          }
+          const updated = [
+            ...activeAssets,
+            { id: inferred.id, symbol: inferred.symbol, name: cleanName, kind: inferred.kind }
+          ];
+          onUpdateAssets(updated);
+          setAssetCodeInput('');
+          setAssetNameInput('');
+        }
+      };
+
+      const handleEditAssetClick = (asset) => {
+        setAssetFormError('');
+        setEditingAssetId(asset.id);
+        setAssetCodeInput(asset.id === '^BVSP' ? 'IBOV' : asset.id.replace('-BRL', ''));
+        setAssetNameInput(asset.name);
+      };
+
+      const handleDeleteAsset = (id) => {
+        if (activeAssets.length <= 1) {
+          setAssetFormError('Mantenha pelo menos 1 ativo na faixa.');
+          return;
+        }
+        const updated = activeAssets.filter(a => a.id !== id);
+        onUpdateAssets(updated);
+        if (editingAssetId === id) {
+          setEditingAssetId(null);
+          setAssetCodeInput('');
+          setAssetNameInput('');
+        }
+      };
+
+      const handleTogglePreset = (preset) => {
+        setAssetFormError('');
+        const exists = activeAssets.some(a => a.id === preset.id);
+        if (exists) {
+          if (activeAssets.length <= 1) return;
+          onUpdateAssets(activeAssets.filter(a => a.id !== preset.id));
+        } else {
+          onUpdateAssets([...activeAssets, preset]);
+        }
+      };
+
+      const handleRestoreDefaults = () => {
+        setAssetFormError('');
+        setEditingAssetId(null);
+        setAssetCodeInput('');
+        setAssetNameInput('');
+        onUpdateAssets(DEFAULT_MARKET_ASSETS);
+      };
+
+      const renderTickerItems = (suffixKey) =>
+        activeAssets.map((asset) => {
+          const q = quotes[asset.id];
+          const pct = q ? q.pctChange : null;
+          const isPositive = pct !== null && pct > 0.005;
+          const isNegative = pct !== null && pct < -0.005;
+
+          return (
+            <div
+              key={`${asset.id}_${suffixKey}`}
+              class="inline-flex items-center space-x-2 px-4 py-1 border-r border-slate-100 shrink-0"
+            >
+              <span class="text-xs font-bold tracking-tight text-slate-800">{asset.symbol}</span>
+              <span class="text-[11px] text-slate-400 hidden sm:inline">{asset.name}</span>
+              <span class="text-xs font-semibold text-slate-700 tabular-nums">
+                {formatAssetPrice(asset, q)}
+              </span>
+              {pct !== null ? (
+                <span
+                  class={`text-[11px] font-bold px-1.5 py-0.5 rounded-md tabular-nums ${
+                    isPositive
+                      ? 'bg-emerald-50 text-emerald-700'
+                      : isNegative
+                        ? 'bg-rose-50 text-rose-700'
+                        : 'bg-slate-100 text-slate-500'
+                  }`}
+                >
+                  {isPositive ? '▲' : isNegative ? '▼' : '•'} {pct > 0 ? '+' : ''}
+                  {pct.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%
+                </span>
+              ) : (
+                <span class="text-[10px] text-slate-400 tabular-nums">...</span>
+              )}
+            </div>
+          );
+        });
+
+      return (
+        <>
+          <div class="bg-white text-slate-700 rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex items-center justify-between">
+            {/* Selo Esquerdo Discreto */}
+            <div class="bg-slate-50/80 px-3.5 py-2 border-r border-slate-200/80 flex items-center space-x-2 shrink-0 z-10">
+              <span
+                class={`w-1.5 h-1.5 rounded-full ${loadingQuotes ? 'bg-amber-400 animate-ping' : 'bg-emerald-500'}`}
+                title="Atualização automática a cada 1 minuto"
+              ></span>
+              <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Mercado</span>
+              {lastSyncTime && (
+                <span class="text-[10px] text-slate-400 hidden md:inline tabular-nums">{lastSyncTime}</span>
+              )}
+            </div>
+
+            {/* Faixa Rolante Discreta */}
+            <div class="flex-1 overflow-hidden ticker-wrapper relative py-1">
+              <div class="animate-ticker">
+                <div class="flex items-center">{renderTickerItems('a')}</div>
+                <div class="flex items-center" aria-hidden="true">{renderTickerItems('b')}</div>
+              </div>
+            </div>
+
+            {/* Botão Direito (Personalizar Ativos) */}
+            <div class="bg-slate-50/80 px-2.5 py-1.5 border-l border-slate-200/80 flex items-center shrink-0 z-10">
+              <button
+                type="button"
+                onClick={() => {
+                  setAssetFormError('');
+                  setEditingAssetId(null);
+                  setAssetCodeInput('');
+                  setAssetNameInput('');
+                  setIsManageOpen(true);
+                }}
+                class="px-2.5 py-1 rounded-lg bg-white hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 border border-slate-200 hover:border-emerald-200 text-[11px] font-semibold flex items-center space-x-1.5 transition"
+                title="Incluir, alterar ou excluir moedas e ações da faixa"
+              >
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="4" y1="21" x2="4" y2="14"></line>
+                  <line x1="4" y1="10" x2="4" y2="3"></line>
+                  <line x1="12" y1="21" x2="12" y2="12"></line>
+                  <line x1="12" y1="8" x2="12" y2="3"></line>
+                  <line x1="20" y1="21" x2="20" y2="16"></line>
+                  <line x1="20" y1="12" x2="20" y2="3"></line>
+                  <line x1="1" y1="14" x2="7" y2="14"></line>
+                  <line x1="9" y1="8" x2="15" y2="8"></line>
+                  <line x1="17" y1="16" x2="23" y2="16"></line>
+                </svg>
+                <span class="hidden sm:inline">Ativos</span>
+              </button>
+            </div>
+          </div>
+
+          {/* MODAL DE PERSONALIZAÇÃO DE ATIVOS DO TICKER */}
+          {isManageOpen && (
+            <div class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+              <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5">
+                <div class="flex justify-between items-center border-b pb-3">
+                  <div>
+                    <h3 class="font-bold text-slate-800 text-lg">Personalizar Faixa de Cotações</h3>
+                    <p class="text-xs text-slate-500">Inclua, edite ou remova moedas, criptos e ações da B3.</p>
+                  </div>
+                  <button onClick={() => setIsManageOpen(false)} class="text-slate-400 hover:text-slate-700">✕</button>
+                </div>
+
+                {/* Formulário de Inclusão / Edição */}
+                <form onSubmit={handleSaveAssetForm} class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                  <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                      {editingAssetId ? '✏️ Alterando Ativo' : '➕ Adicionar Novo Ativo'}
+                    </span>
+                    {editingAssetId && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingAssetId(null);
+                          setAssetCodeInput('');
+                          setAssetNameInput('');
+                          setAssetFormError('');
+                        }}
+                        class="text-xs text-slate-500 hover:text-slate-700 font-semibold"
+                      >
+                        Cancelar edição
+                      </button>
+                    )}
+                  </div>
+
+                  {assetFormError && (
+                    <p class="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-2.5 py-1.5 font-medium">
+                      {assetFormError}
+                    </p>
+                  )}
+
+                  <div class="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+                    <div class="sm:col-span-5">
+                      <label class="block text-[11px] font-semibold text-slate-600 mb-1">Código / Ticker</label>
+                      <input
+                        type="text"
+                        required
+                        value={assetCodeInput}
+                        onChange={e => setAssetCodeInput(e.target.value)}
+                        placeholder="Ex: BBAS3, USD, BTC"
+                        class="w-full border rounded-xl p-2 text-sm bg-white uppercase font-bold"
+                      />
+                    </div>
+                    <div class="sm:col-span-7">
+                      <label class="block text-[11px] font-semibold text-slate-600 mb-1">Nome de Exibição</label>
+                      <input
+                        type="text"
+                        value={assetNameInput}
+                        onChange={e => setAssetNameInput(e.target.value)}
+                        placeholder="Ex: Banco do Brasil"
+                        class="w-full border rounded-xl p-2 text-sm bg-white"
+                      />
+                    </div>
+                  </div>
+
+                  <div class="flex items-center justify-between pt-1">
+                    <span class="text-[11px] text-slate-400">
+                      Aceita moedas (USD, EUR, GBP), cripto (BTC, ETH) e ações B3 (PETR4, WEGE3, MXRF11).
+                    </span>
+                    <button
+                      type="submit"
+                      class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition shrink-0 ml-2"
+                    >
+                      {editingAssetId ? 'Salvar Alteração' : 'Incluir'}
+                    </button>
+                  </div>
+                </form>
+
+                {/* Atalhos Rápidos */}
+                <div class="space-y-1.5">
+                  <span class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                    Atalhos Rápidos (Clique para ativar/desativar)
+                  </span>
+                  <div class="flex flex-wrap gap-1.5">
+                    {POPULAR_MARKET_PRESETS.map(preset => {
+                      const isSelected = activeAssets.some(a => a.id === preset.id);
+                      return (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => handleTogglePreset(preset)}
+                          class={`px-2.5 py-1 rounded-lg text-xs font-bold border transition ${
+                            isSelected
+                              ? 'bg-emerald-600 text-white border-emerald-600'
+                              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          {isSelected ? '✓ ' : '+ '}
+                          {preset.symbol}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Lista de Ativos Ativos na Faixa */}
+                <div class="space-y-2 max-h-52 overflow-y-auto pr-1 custom-scrollbar">
+                  <span class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                    Ativos Exibidos na Faixa ({activeAssets.length})
+                  </span>
+                  {activeAssets.map(asset => {
+                    const q = quotes[asset.id];
+                    const isBeingEdited = editingAssetId === asset.id;
+                    return (
+                      <div
+                        key={asset.id}
+                        class={`flex items-center justify-between p-2.5 rounded-xl border ${
+                          isBeingEdited ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-slate-200'
+                        }`}
+                      >
+                        <div>
+                          <div class="flex items-center space-x-2">
+                            <span class="text-xs font-extrabold text-slate-900">{asset.symbol}</span>
+                            <span class="text-xs text-slate-500">{asset.name}</span>
+                            <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+                              {asset.kind === 'currency' ? 'Moeda' : asset.kind === 'crypto' ? 'Cripto' : asset.kind === 'index' ? 'Índice' : 'Ação/FII'}
+                            </span>
+                          </div>
+                          {q && (
+                            <span class="text-[11px] text-slate-400 tabular-nums">
+                              Cotação atual: {formatAssetPrice(asset, q)} ({q.pctChange > 0 ? '+' : ''}{q.pctChange.toFixed(2)}%)
+                            </span>
+                          )}
+                        </div>
+
+                        <div class="flex items-center space-x-1">
+                          <button
+                            type="button"
+                            onClick={() => handleEditAssetClick(asset)}
+                            class="p-1.5 text-slate-500 hover:text-emerald-600 rounded-lg hover:bg-slate-100 transition"
+                            title="Alterar ativo"
+                          >
+                            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteAsset(asset.id)}
+                            class="p-1.5 text-slate-500 hover:text-red-600 rounded-lg hover:bg-slate-100 transition"
+                            title="Excluir ativo da faixa"
+                          >
+                            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="3 6 5 6 21 6"></polyline>
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div class="pt-3 flex items-center justify-between border-t">
+                  <button
+                    type="button"
+                    onClick={handleRestoreDefaults}
+                    class="text-xs font-bold text-slate-500 hover:text-slate-800 underline"
+                  >
+                    Restaurar Padrão
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsManageOpen(false)}
+                    class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-sm transition"
+                  >
+                    Concluir
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      );
+    }
+
+    function MonthSelector({ value, onChange }) {
+      const [isOpen, setIsOpen] = useState(false);
+      const containerRef = useRef(null);
+
+      const [selYear, selMonth] = useMemo(() => {
+        if (!value || !value.includes('-')) {
+          const now = new Date();
+          return [now.getFullYear(), now.getMonth() + 1];
+        }
+        const [y, m] = value.split('-').map(Number);
+        return [y, m];
+      }, [value]);
+
+      const [pickerYear, setPickerYear] = useState(selYear);
+
+      useEffect(() => {
+        setPickerYear(selYear);
+      }, [selYear]);
+
+      useEffect(() => {
+        if (!isOpen) return;
+        const handleClickOutside = (e) => {
+          if (containerRef.current && !containerRef.current.contains(e.target)) {
+            setIsOpen(false);
+          }
+        };
+        const handleKeyDown = (e) => {
+          if (e.key === 'Escape') setIsOpen(false);
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        document.addEventListener('keydown', handleKeyDown);
+        return () => {
+          document.removeEventListener('mousedown', handleClickOutside);
+          document.removeEventListener('keydown', handleKeyDown);
+        };
+      }, [isOpen]);
+
+      const stepMonth = (delta) => {
+        const d = new Date(selYear, (selMonth - 1) + delta, 1);
+        const nextYM = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        onChange(nextYM);
+      };
+
+      const selectMonthYear = (y, mIdx) => {
+        const nextYM = `${y}-${String(mIdx + 1).padStart(2, '0')}`;
+        onChange(nextYM);
+        setIsOpen(false);
+      };
+
+      const goToday = () => {
+        onChange(getLocalTodayStr().slice(0, 7));
+        setIsOpen(false);
+      };
+
+      const currentTodayYM = getLocalTodayStr().slice(0, 7);
+
+      return (
+        <div ref={containerRef} className="relative flex items-center bg-slate-100 hover:bg-slate-200/70 border border-slate-200 rounded-xl p-1 transition shadow-xs">
+          <button
+            type="button"
+            onClick={() => stepMonth(-1)}
+            className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-500 hover:text-slate-900 hover:bg-white transition"
+            title="Mês anterior"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsOpen(prev => !prev)}
+            className="flex items-center space-x-2 px-2.5 sm:px-3 py-1 rounded-lg hover:bg-white/90 text-slate-800 transition cursor-pointer select-none"
+            title="Clique para escolher o mês e o ano"
+          >
+            <span className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="16" y1="2" x2="16" y2="6"></line>
+                <line x1="8" y1="2" x2="8" y2="6"></line>
+                <line x1="3" y1="10" x2="21" y2="10"></line>
+              </svg>
+            </span>
+            <span className="text-xs sm:text-sm font-bold tracking-tight text-slate-800 whitespace-nowrap">
+              <span className="hidden sm:inline">{MONTH_NAMES_PT[selMonth - 1]}</span>
+              <span className="sm:hidden">{MONTH_SHORT_PT[selMonth - 1]}</span>
+              <span className="text-slate-400 font-semibold mx-1">/</span>
+              <span className="text-emerald-700">{selYear}</span>
+            </span>
+            <svg
+              className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-180 text-emerald-600' : ''}`}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => stepMonth(1)}
+            className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-500 hover:text-slate-900 hover:bg-white transition"
+            title="Próximo mês"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+          </button>
+
+          {isOpen && (
+            <div className="absolute right-0 sm:left-1/2 sm:-translate-x-1/2 top-full mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 z-50">
+              <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setPickerYear(y => y - 1)}
+                  className="w-8 h-8 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition"
+                  title="Ano anterior"
+                >
+                  ‹
+                </button>
+                <span className="text-sm font-extrabold text-slate-800 tracking-wide">
+                  {pickerYear}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPickerYear(y => y + 1)}
+                  className="w-8 h-8 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition"
+                  title="Próximo ano"
+                >
+                  ›
+                </button>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                {MONTH_SHORT_PT.map((mLabel, idx) => {
+                  const candidateYM = `${pickerYear}-${String(idx + 1).padStart(2, '0')}`;
+                  const isSelected = candidateYM === value;
+                  const isCurrentToday = candidateYM === currentTodayYM;
+
+                  return (
+                    <button
+                      key={mLabel}
+                      type="button"
+                      onClick={() => selectMonthYear(pickerYear, idx)}
+                      className={`py-2 px-2 rounded-xl text-xs font-bold transition relative ${
+                        isSelected
+                          ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/25'
+                          : isCurrentToday
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
+                            : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      {mLabel}
+                      {isCurrentToday && !isSelected && (
+                        <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={goToday}
+                  className="text-xs font-bold text-emerald-600 hover:text-emerald-700 hover:underline"
+                >
+                  Ir para mês atual
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsOpen(false)}
+                  className="text-xs font-semibold text-slate-400 hover:text-slate-600"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
     function App() {
       const [fbReady, setFbReady] = useState(Boolean(window.FB));
       const [firebaseError, setFirebaseError] = useState(window.FB_ERROR || '');
@@ -456,15 +1142,12 @@
 
       const [activeTab, setActiveTab] = useState('dashboard');
       const [selectedMonth, setSelectedMonth] = useState(() => getLocalTodayStr().slice(0, 7));
-      const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
-      const [pickerYear, setPickerYear] = useState(() => Number(getLocalTodayStr().slice(0, 4)));
-      const monthPickerRef = useRef(null);
-
       const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('ALL');
+      const [searchQuery, setSearchQuery] = useState('');
       const [transactionViewMode, setTransactionViewMode] = useState('date');
       const [showCardPurchases, setShowCardPurchases] = useState(false);
       const [pieChartMode, setPieChartMode] = useState('consumption'); // 'consumption' | 'cash'
-      const [searchQuery, setSearchQuery] = useState('');
+      const [budgetHealthMode, setBudgetHealthMode] = useState('planned'); // 'planned' | 'executed'
 
       const [transactions, setTransactions] = useState([]);
       const [categories, setCategories] = useState(INITIAL_CATEGORIES);
@@ -472,6 +1155,8 @@
       const [recurringMerchants, setRecurringMerchants] = useState([]);
       const [unpaidInvoiceReminder, setUnpaidInvoiceReminder] = useState(null);
       const [defaultInvoiceDay, setDefaultInvoiceDay] = useState('10');
+      const [marketAssets, setMarketAssets] = useState(DEFAULT_MARKET_ASSETS);
+      const [currentEmergencyReserve, setCurrentEmergencyReserve] = useState(0);
       const [saveStatus, setSaveStatus] = useState('idle');
 
       const [isModalOpen, setIsModalOpen] = useState(false);
@@ -504,7 +1189,9 @@
       const [categoryFormData, setCategoryFormData] = useState({
         name: '',
         color: '#10B981',
-        limit: 1000
+        limit: 1000,
+        isIncome: false,
+        type: 'necessidade'
       });
 
       const [importDocType, setImportDocType] = useState('card_invoice');
@@ -543,7 +1230,8 @@
       const barChartRef = useRef(null);
       const pieChartInstance = useRef(null);
       const barChartInstance = useRef(null);
-      const fixedDatesMigratedRef = useRef(false);
+      const fixedCardDatesMigratedRef = useRef(false);
+      const futureStatusMigratedRef = useRef(false);
 
       useEffect(() => {
         const onReady = () => setFbReady(true);
@@ -558,17 +1246,6 @@
           window.removeEventListener('fb-error', onErr);
         };
       }, []);
-
-      useEffect(() => {
-        if (!isMonthPickerOpen) return;
-        const handleClickOutside = (e) => {
-          if (monthPickerRef.current && !monthPickerRef.current.contains(e.target)) {
-            setIsMonthPickerOpen(false);
-          }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-      }, [isMonthPickerOpen]);
 
       const isTxPaid = (t) => t.isPaid !== false;
 
@@ -616,26 +1293,22 @@
       }, [transactions, todayStr, recurringMerchants]);
 
       useEffect(() => {
-        if (!user || !transactions.length || fixedDatesMigratedRef.current) return;
+        if (!user || !transactions.length || fixedCardDatesMigratedRef.current) return;
 
         let changed = false;
         const updatedList = transactions.map(t => {
-          const isRecurringItem =
-            t.recurrenceType === 'fixed' ||
-            (t.description || '').includes('[Recorrente]') ||
-            String(t.id || '').startsWith('fatura_rec_') ||
-            String(t.id || '').startsWith('rec_man_');
+          const isProjectedCardRec =
+            Boolean(t.isProjected) &&
+            (t.recurrenceType === 'fixed' || (t.description || '').includes('[Recorrente]')) &&
+            isCreditCardPurchase(t);
 
-          if (!isRecurringItem || !t.date) return t;
+          if (!isProjectedCardRec) return t;
 
-          const [ty, tm, tdStr] = t.date.split('-');
-          const currentDay = parseInt(tdStr, 10);
           const baseMerchant = getBaseMerchantName(t.description);
-
-          // Busca o lançamento âncora mais antigo da mesma série (por groupId ou estabelecimento/descrição)
-          const sameSeries = transactions
+          const originTx = transactions
             .filter(other => {
-              if (!other.date) return false;
+              if (other.id === t.id || other.isProjected) return false;
+              if (!isCreditCardPurchase(other)) return false;
               if (t.groupId && other.groupId === t.groupId) return true;
               const otherMerchant = getBaseMerchantName(other.description);
               return (
@@ -644,20 +1317,15 @@
                 (otherMerchant === baseMerchant || otherMerchant.includes(baseMerchant) || baseMerchant.includes(otherMerchant))
               );
             })
-            .sort((a, b) => a.date.localeCompare(b.date));
+            .sort((a, b) => a.date.localeCompare(b.date))[0];
 
-          if (sameSeries.length <= 1) return t;
+          if (!originTx || !originTx.date) return t;
 
-          // Preferir o âncora que NÃO caiu em dia 01 (ou o primeiro da série se todos forem dia 01)
-          const nonFirstAnchor = sameSeries.find(item => parseInt(item.date.split('-')[2], 10) !== 1);
-          const anchorTx = nonFirstAnchor || sameSeries[0];
+          const originDay = parseInt(originTx.date.split('-')[2], 10);
+          const [ty, tm, tdStr] = t.date.split('-');
+          const currentDay = parseInt(tdStr, 10);
 
-          if (!anchorTx || anchorTx.id === t.id) return t;
-
-          const originDay = parseInt(anchorTx.date.split('-')[2], 10);
-
-          // Corrige itens futuros não efetivados (ou que caíram indevidamente no dia 01) para o dia exato do âncora
-          if (originDay && originDay !== 1 && currentDay === 1 && !isTxPaid(t)) {
+          if (originDay && currentDay !== originDay) {
             const maxDays = new Date(parseInt(ty, 10), parseInt(tm, 10), 0).getDate();
             const clampedDay = String(Math.min(originDay, maxDays)).padStart(2, '0');
             const correctedDate = `${ty}-${tm}-${clampedDay}`;
@@ -670,7 +1338,33 @@
           return t;
         });
 
-        fixedDatesMigratedRef.current = true;
+        fixedCardDatesMigratedRef.current = true;
+        if (changed) {
+          setTransactions(updatedList);
+          saveDataToFirestore(updatedList, categories, customRules, recurringMerchants, unpaidInvoiceReminder);
+        }
+      }, [user, transactions]);
+
+      useEffect(() => {
+        if (!user || !transactions.length || futureStatusMigratedRef.current) return;
+
+        const currentToday = getLocalTodayStr();
+        let changed = false;
+
+        const updatedList = transactions.map(t => {
+          if (t.date && t.date > currentToday && isTxPaid(t)) {
+            changed = true;
+            const isCard = isCreditCardPurchase(t);
+            return {
+              ...t,
+              isPaid: false,
+              isProjected: isCard ? true : Boolean(t.isProjected)
+            };
+          }
+          return t;
+        });
+
+        futureStatusMigratedRef.current = true;
         if (changed) {
           setTransactions(updatedList);
           saveDataToFirestore(updatedList, categories, customRules, recurringMerchants, unpaidInvoiceReminder);
@@ -845,7 +1539,9 @@
           setCustomRules({});
           setRecurringMerchants([]);
           setUnpaidInvoiceReminder(null);
-          fixedDatesMigratedRef.current = false;
+          setMarketAssets(DEFAULT_MARKET_ASSETS);
+          fixedCardDatesMigratedRef.current = false;
+          futureStatusMigratedRef.current = false;
           return;
         }
         const { db, doc, onSnapshot } = window.FB;
@@ -860,6 +1556,8 @@
             if (data.recurringMerchants) setRecurringMerchants(data.recurringMerchants);
             setUnpaidInvoiceReminder(data.unpaidInvoiceReminder || null);
             if (data.defaultInvoiceDay) setDefaultInvoiceDay(String(data.defaultInvoiceDay));
+            if (Array.isArray(data.marketAssets) && data.marketAssets.length > 0) setMarketAssets(data.marketAssets);
+            if (typeof data.emergencyReserve === 'number') setCurrentEmergencyReserve(data.emergencyReserve);
           } else {
             saveDataToFirestore([], INITIAL_CATEGORIES, {}, [], null, '10');
           }
@@ -872,32 +1570,57 @@
         if (window.lucide) window.lucide.createIcons();
       });
 
+      const stripUndefinedDeep = (val) => {
+        if (Array.isArray(val)) {
+          return val.map(item => stripUndefinedDeep(item));
+        }
+        if (val !== null && typeof val === 'object') {
+          const cleanObj = {};
+          Object.keys(val).forEach(k => {
+            if (val[k] !== undefined) {
+              cleanObj[k] = stripUndefinedDeep(val[k]);
+            }
+          });
+          return cleanObj;
+        }
+        return val;
+      };
+
+      const [saveErrorDetail, setSaveErrorDetail] = useState('');
+
       const saveDataToFirestore = async (
         newTransactions,
         newCategories,
         newRules = customRules,
         newRecurringMerchants = recurringMerchants,
         newInvoiceReminder = unpaidInvoiceReminder,
-        newDefaultInvoiceDay = defaultInvoiceDay
+        newDefaultInvoiceDay = defaultInvoiceDay,
+        newMarketAssets = marketAssets,
+        newReserve = currentEmergencyReserve
       ) => {
         if (!user || !window.FB) return;
         const { db, doc, setDoc } = window.FB;
         const userDocRef = doc(db, "fernance_users", user.uid);
         setSaveStatus('saving');
+        setSaveErrorDetail('');
         try {
-          await setDoc(userDocRef, {
+          const cleanPayload = stripUndefinedDeep({
             transactions: newTransactions,
             categories: newCategories,
             customRules: newRules,
             recurringMerchants: newRecurringMerchants,
             unpaidInvoiceReminder: newInvoiceReminder,
             defaultInvoiceDay: newDefaultInvoiceDay,
+            marketAssets: newMarketAssets,
+            emergencyReserve: newReserve,
             updatedAt: new Date().toISOString()
-          }, { merge: true });
+          });
+          await setDoc(userDocRef, cleanPayload, { merge: true });
           setSaveStatus('saved');
           setTimeout(() => setSaveStatus(s => (s === 'saved' ? 'idle' : s)), 2000);
         } catch (err) {
           console.error('Erro ao salvar:', err);
+          setSaveErrorDetail(err?.code || err?.message || 'Erro desconhecido');
           setSaveStatus('error');
         }
       };
@@ -911,23 +1634,21 @@
       }, [monthTransactions, recurringMerchants]);
 
       const filteredMonthTransactions = useMemo(() => {
-        const normalizedSearch = normalizeText(searchQuery);
-
+        const qNorm = normalizeText(searchQuery);
         return monthTransactions
           .filter(t => {
             const isCardPurchase = isCreditCardPurchase(t);
             if (!showCardPurchases && isCardPurchase && selectedCategoryFilter !== 'CARD_PROJECTED_ONLY') {
               return false;
             }
-
-            if (normalizedSearch) {
-              const descMatch = normalizeText(t.description).includes(normalizedSearch);
-              const catMatch = normalizeText(t.category).includes(normalizedSearch);
-              const amountStr = String(t.amount.toFixed(2)).replace('.', ',');
-              const amountMatch = amountStr.includes(normalizedSearch) || String(t.amount).includes(normalizedSearch);
-              if (!descMatch && !catMatch && !amountMatch) return false;
+            if (qNorm) {
+              const descMatch = normalizeText(t.description).includes(qNorm);
+              const catMatch = normalizeText(t.category).includes(qNorm);
+              const dateMatch = formatDateBR(t.date).includes(qNorm) || (t.date || '').includes(qNorm);
+              const valStr = Number(t.amount || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+              const valMatch = valStr.includes(qNorm) || String(t.amount).includes(qNorm);
+              if (!descMatch && !catMatch && !dateMatch && !valMatch) return false;
             }
-
             if (selectedCategoryFilter === 'ALL') return true;
             if (selectedCategoryFilter === 'PENDING_ONLY') return !isTxPaid(t);
             if (selectedCategoryFilter === 'PAID_ONLY') return isTxPaid(t);
@@ -1016,8 +1737,7 @@
         const [y, m] = selectedMonth.split('-').map(Number);
         const pd = new Date(y, m - 2, 1);
         const prevYM = `${pd.getFullYear()}-${String(pd.getMonth() + 1).padStart(2, '0')}`;
-        const goalCats = categories.filter(c => !c.isIncome && !c.isSystem);
-        const goalCatNames = new Set(goalCats.map(c => c.name));
+        const incomeCatNames = new Set(categories.filter(c => c.isIncome).map(c => c.name));
 
         let prevCons = 0;
         transactions.forEach(t => {
@@ -1025,7 +1745,8 @@
             t.date &&
             t.date.startsWith(prevYM) &&
             t.type === 'expense' &&
-            goalCatNames.has(t.category)
+            t.category !== 'Pagamento de Fatura' &&
+            !incomeCatNames.has(t.category)
           ) {
             prevCons += t.amount;
           }
@@ -1037,12 +1758,19 @@
         if (today.startsWith(selectedMonth)) daysLeft = daysInMonth - Number(today.slice(8, 10)) + 1;
         else if (selectedMonth > today.slice(0, 7)) daysLeft = daysInMonth;
 
+        const goalCats = categories.filter(c => !c.isIncome && !c.isSystem);
+        const goalCatNames = new Set(goalCats.map(c => c.name));
+
         const budget = goalCats.reduce((a, c) => a + (Number(c.limit) || 0), 0);
         const budgetedSpent = monthTransactions
           .filter(t => t.type === 'expense' && goalCatNames.has(t.category))
           .reduce((a, b) => a + b.amount, 0);
 
         const budgetPct = budget > 0 ? (budgetedSpent / budget) * 100 : 0;
+        const totalIncome = totals.realizedIncome + totals.pendingIncome;
+        const incomeUsedPct = totalIncome > 0 ? (budgetedSpent / totalIncome) * 100 : 0;
+        const incomeLeft = totalIncome - budgetedSpent;
+        const savingsRate = totalIncome > 0 ? ((totalIncome - budgetedSpent) / totalIncome) * 100 : null;
 
         const topGoals = goalCats.filter(c => (c.limit || 0) > 0).map(c => {
           const spent = monthTransactions
@@ -1065,10 +1793,14 @@
           budgetedSpent,
           budgetPct,
           budgetLeft: budget - budgetedSpent,
+          totalIncome,
+          incomeUsedPct,
+          incomeLeft,
+          savingsRate,
           topGoals,
           upcoming
         };
-      }, [transactions, categories, monthTransactions, selectedMonth, recurringMerchants]);
+      }, [transactions, categories, totals, monthTransactions, selectedMonth, recurringMerchants]);
 
       useEffect(() => {
         if (activeTab !== 'dashboard') return;
@@ -1604,8 +2336,7 @@
 
       const parseRawLinesToItems = (rows, docType) => {
         const parsedItems = [];
-        const todayDayStr = getLocalTodayStr().split('-')[2];
-        const fallbackDate = docType === 'card_invoice' ? invoiceDueDate : `${selectedMonth}-${todayDayStr}`;
+        const fallbackDate = docType === 'card_invoice' ? invoiceDueDate : `${selectedMonth}-01`;
 
         rows.forEach((row, idx) => {
           const dateVal = normalizeDateString(row.date, fallbackDate);
@@ -1898,9 +2629,8 @@
               category: item.category,
               paymentMethod: isCardInvoice ? 'Cartão de Crédito' : 'Conta Corrente',
               recurrenceType: item.instInfo ? 'installment' : item.isRecurring ? 'fixed' : 'single',
-              installmentCurrent: item.instInfo?.current,
-              installmentTotal: item.instInfo?.total,
-              isPaid: isCardInvoice ? true : item.date <= currentToday,
+              ...(item.instInfo ? { installmentCurrent: item.instInfo.current, installmentTotal: item.instInfo.total } : {}),
+              isPaid: item.date <= currentToday,
               isProjected: false
             });
           }
@@ -1998,7 +2728,7 @@
               type: 'expense',
               category: 'Tarifas / Ajustes Fatura',
               paymentMethod: 'Cartão de Crédito',
-              isPaid: invoiceDueDate < currentToday,
+              isPaid: invoiceDueDate <= currentToday,
               notes: 'Incorporado ao total da fatura cobrada no mês atual'
             });
           }
@@ -2012,7 +2742,7 @@
               type: 'expense',
               category: 'Pagamento de Fatura',
               paymentMethod: 'Débito Bancário',
-              isPaid: invoiceDueDate < currentToday,
+              isPaid: invoiceDueDate <= currentToday,
               notes: 'Saída de Caixa no Vencimento'
             });
           }
@@ -2062,17 +2792,13 @@
           const totalInst = formData.installments || 2;
           const newGroupId = wasSingle && becameRecurringOrInst ? `grp_conv_${nowId()}` : oldTx?.groupId;
 
-          const oldDay = oldTx?.date ? parseInt(oldTx.date.split('-')[2], 10) : null;
-          const newDay = formData.date ? parseInt(formData.date.split('-')[2], 10) : null;
-          const dayChanged = oldDay && newDay && oldDay !== newDay;
-
-          if (!wasSingle && oldTx?.groupId && (Math.abs(oldTx.amount - baseAmount) >= 0.01 || oldTx.category !== formData.category || dayChanged)) {
+          if (!wasSingle && oldTx?.groupId && (Math.abs(oldTx.amount - baseAmount) >= 0.01 || oldTx.category !== formData.category)) {
             const futureSiblingsCount = transactions.filter(
               t => t.id !== editingId && t.groupId === oldTx.groupId && t.date >= oldTx.date
             ).length;
             if (futureSiblingsCount > 0) {
               propagateSeriesChanges = confirm(
-                `Existem ${futureSiblingsCount} lançamentos futuros nesta série.\nDeseja aplicar o novo valor (R$ ${baseAmount.toFixed(2)}), categoria ("${formData.category}")${dayChanged ? ` e dia de vencimento (dia ${String(newDay).padStart(2, '0')})` : ''} também para os meses seguintes?`
+                `Existem ${futureSiblingsCount} lançamentos futuros nesta série.\nDeseja aplicar o novo valor (R$ ${baseAmount.toFixed(2)}) e categoria ("${formData.category}") também para os meses seguintes?`
               );
             }
           }
@@ -2084,9 +2810,11 @@
 
           updatedTxList = transactions.map(t => {
             if (t.id === editingId) {
+              const { installmentCurrent: _ic, installmentTotal: _it, groupId: _gid, ...cleanExisting } = t;
+              const resolvedGroupId = newGroupId || _gid;
               return {
-                ...t,
-                groupId: newGroupId || t.groupId,
+                ...cleanExisting,
+                ...(resolvedGroupId ? { groupId: resolvedGroupId } : {}),
                 description: formData.recurrenceType === 'installment' && !detectInstallmentInfo(t.description)
                   ? `${baseCleanTitle}${currentLabel}`
                   : formData.description,
@@ -2096,23 +2824,16 @@
                 date: formData.date,
                 paymentMethod: formData.paymentMethod,
                 recurrenceType: formData.recurrenceType,
-                installmentCurrent: formData.recurrenceType === 'installment' ? currInst : undefined,
-                installmentTotal: formData.recurrenceType === 'installment' ? totalInst : undefined,
+                ...(formData.recurrenceType === 'installment'
+                  ? { installmentCurrent: currInst, installmentTotal: totalInst }
+                  : {}),
                 isPaid: Boolean(formData.isPaid),
-                isProjected: formData.isPaid ? false : t.isProjected
+                isProjected: formData.isPaid ? false : Boolean(t.isProjected)
               };
             }
             if (propagateSeriesChanges && t.groupId === oldTx.groupId && t.date >= oldTx.date) {
-              let nextSiblingDate = t.date;
-              if (dayChanged && newDay) {
-                const [sy, sm] = t.date.split('-');
-                const maxDays = new Date(parseInt(sy, 10), parseInt(sm, 10), 0).getDate();
-                const clamped = String(Math.min(newDay, maxDays)).padStart(2, '0');
-                nextSiblingDate = `${sy}-${sm}-${clamped}`;
-              }
               return {
                 ...t,
-                date: nextSiblingDate,
                 amount: baseAmount,
                 category: formData.category
               };
@@ -2198,7 +2919,7 @@
                 recurrenceType: 'installment',
                 installmentCurrent: i + 1,
                 installmentTotal: formData.installments,
-                isPaid: i === 0 && startOffset === 0 ? Boolean(formData.isPaid) : false,
+                isPaid: i === 0 && startOffset === 0 ? Boolean(formData.isPaid) : computeDefaultIsPaid(itemDate, 'single', 0),
                 isProjected: isCard && !(i === 0 && startOffset === 0 && formData.isPaid),
                 notes: isCard ? `Parcela projetada do cartão (${label})` : `Parcela (${label})`
               });
@@ -2216,7 +2937,7 @@
                 date: itemDate,
                 paymentMethod: formData.paymentMethod,
                 recurrenceType: 'fixed',
-                isPaid: i === 0 ? Boolean(formData.isPaid) : false,
+                isPaid: i === 0 ? Boolean(formData.isPaid) : computeDefaultIsPaid(itemDate, 'single', 0),
                 isProjected: isCard && !(i === 0 && formData.isPaid),
                 notes: isCard ? 'Assinatura/recorrência projetada na fatura do cartão' : 'Despesa recorrente'
               });
@@ -2252,7 +2973,7 @@
           return;
         }
 
-        const safeLimit = parseFloat(categoryFormData.limit) || 0;
+        const safeLimit = categoryFormData.isIncome ? 0 : (parseFloat(categoryFormData.limit) || 0);
 
         if (editingCategoryId) {
           const oldCat = categories.find(c => c.id === editingCategoryId);
@@ -2264,7 +2985,9 @@
                 ...c,
                 name: trimmedName,
                 color: categoryFormData.color,
-                limit: c.isIncome ? 0 : safeLimit
+                limit: safeLimit,
+                isIncome: Boolean(categoryFormData.isIncome),
+                type: categoryFormData.type
               };
             }
             return c;
@@ -2293,14 +3016,15 @@
           setCustomRules(updatedRules);
           saveDataToFirestore(updatedTxList, updatedCategories, updatedRules, recurringMerchants, unpaidInvoiceReminder);
           setEditingCategoryId(null);
-          setCategoryFormData({ name: '', color: '#10B981', limit: 1000 });
+          setCategoryFormData({ name: '', color: '#10B981', limit: 1000, isIncome: false });
         } else {
           const newCat = {
             id: `cat_${nowId()}`,
             name: trimmedName,
             color: categoryFormData.color,
             limit: safeLimit,
-            isIncome: false
+            isIncome: Boolean(categoryFormData.isIncome),
+            type: categoryFormData.type
           };
 
           const updatedCategories = [...categories, newCat];
@@ -2308,10 +3032,10 @@
           setFormData(prev => ({
             ...prev,
             category: newCat.name,
-            type: 'expense'
+            type: newCat.isIncome ? 'income' : 'expense'
           }));
           saveDataToFirestore(transactions, updatedCategories, customRules, recurringMerchants, unpaidInvoiceReminder);
-          setCategoryFormData({ name: '', color: '#10B981', limit: 1000 });
+          setCategoryFormData({ name: '', color: '#10B981', limit: 1000, isIncome: false });
         }
       };
 
@@ -2320,13 +3044,15 @@
         setCategoryFormData({
           name: cat.name,
           color: cat.color || '#10B981',
-          limit: cat.limit || 1000
+          limit: cat.isIncome ? 0 : (cat.limit || 1000),
+          isIncome: Boolean(cat.isIncome),
+          type: cat.type || 'necessidade'
         });
       };
 
       const handleCancelEditCategory = () => {
         setEditingCategoryId(null);
-        setCategoryFormData({ name: '', color: '#10B981', limit: 1000 });
+        setCategoryFormData({ name: '', color: '#10B981', limit: 1000, isIncome: false, type: 'necessidade' });
       };
 
       const handleDeleteCategory = (cat) => {
@@ -2459,6 +3185,143 @@
         setDeleteModalData(null);
       };
 
+      
+      // CÁLCULOS DE SAÚDE FINANCEIRA BASEADOS NA LITERATURA
+      const healthData = useMemo(() => {
+        const totalIncome = totals.realizedIncome + totals.pendingIncome;
+        
+        // Categorizar gastos do mês por tipo (necessidade, desejo, divida, poupanca)
+        let totalNeeds = 0;
+        let totalWants = 0;
+        let totalDebts = 0;
+        let totalSavings = 0;
+        let feeExpenses = 0;
+        let recurringExpenses = 0;
+
+        const catTypeMap = {};
+        categories.forEach(c => {
+          catTypeMap[c.name] = c.type || (c.isIncome ? 'poupanca' : 'necessidade');
+        });
+
+        monthTransactions.forEach(t => {
+          if (t.type === 'expense') {
+            const tCat = t.category || 'Outros / Serviços';
+            const cType = catTypeMap[tCat] || 'necessidade';
+
+            if (tCat === 'Tarifas / Ajustes Fatura' || normalizeText(t.description).includes('juros') || normalizeText(t.description).includes('multa') || normalizeText(t.description).includes('tarifa')) {
+              feeExpenses += t.amount;
+            }
+
+            if (isCreditCardPurchase(t) || t.recurrenceType === 'fixed' || (t.description || '').includes('[Recorrente]')) {
+              if (RECURRING_KEYWORDS.some(kw => hasKw(normalizeText(t.description), kw)) || t.recurrenceType === 'fixed') {
+                recurringExpenses += t.amount;
+              }
+            }
+
+            if (cType === 'necessidade') totalNeeds += t.amount;
+            else if (cType === 'desejo') totalWants += t.amount;
+            else if (cType === 'divida') totalDebts += t.amount;
+            else if (cType === 'poupanca') totalSavings += t.amount;
+          }
+        });
+
+        const totalSpentConsump = totalNeeds + totalWants + totalDebts;
+
+        // 1. Taxa de Poupança (Referência: ~20%)
+        const savingsRate = totalIncome > 0 ? ((totalIncome - totalSpentConsump) / totalIncome) * 100 : 0;
+
+        // 2. Despesas Essenciais / Necessidades (Referência: ~50% a 55%)
+        const needsPct = totalIncome > 0 ? (totalNeeds / totalIncome) * 100 : 0;
+
+        // 3. Despesas de Desejo (Referência: ~30%)
+        const wantsPct = totalIncome > 0 ? (totalWants / totalIncome) * 100 : 0;
+
+        // 4. Comprometimento com Dívidas (Referência: até 30% saudável, 30-40% atenção, >40% elevado)
+        const debtPct = totalIncome > 0 ? (totalDebts / totalIncome) * 100 : 0;
+
+        // 5. Reserva de Emergência (Referência: 3 a 6 meses de despesas mensais)
+        const avgMonthlyExpense = totalSpentConsump > 0 ? totalSpentConsump : 1;
+        const monthsCovered = currentEmergencyReserve > 0 ? currentEmergencyReserve / avgMonthlyExpense : 0;
+
+        // Avaliação de Indicadores (Status: verde, amarelo, vermelho)
+        const indicators = [
+          {
+            key: 'savings',
+            title: 'Taxa de Poupança & Investimento',
+            value: `${savingsRate.toFixed(1)}% da renda`,
+            target: 'Ideal: ≥ 20% (Regra 50/30/20)',
+            status: savingsRate >= 20 ? 'green' : savingsRate >= 10 ? 'yellow' : 'red',
+            desc: savingsRate >= 20 ? 'Excelente! Você está poupando no patamar recomendado pela literatura financeira.' : 'Abaixo da referência de 20%. Tentar direcionar mais recursos para construir patrimônio.'
+          },
+          {
+            key: 'needs',
+            title: 'Custo de Vida Essencial (Necessidades)',
+            value: `${needsPct.toFixed(1)}% da renda`,
+            target: 'Ideal: até 50% (máx. 60%)',
+            status: needsPct <= 55 ? 'green' : needsPct <= 65 ? 'yellow' : 'red',
+            desc: needsPct <= 55 ? 'Seus custos fixos e essenciais estão saudáveis e cabem confortavelmente na renda.' : 'Custos essenciais pesados. O orçamento está engessado, dificultando poupar.'
+          },
+          {
+            key: 'wants',
+            title: 'Estilo de Vida (Desejos & Lazer)',
+            value: `${wantsPct.toFixed(1)}% da renda`,
+            target: 'Ideal: até 30%',
+            status: wantsPct <= 32 ? 'green' : wantsPct <= 40 ? 'yellow' : 'red',
+            desc: wantsPct <= 32 ? 'Gastos com lazer e estilo de vida alinhados com o planejamento.' : 'Gastos com desejos acima do recomendado, consumindo margem de poupança.'
+          },
+          {
+            key: 'debt',
+            title: 'Comprometimento com Dívidas / Parcelados',
+            value: `${debtPct.toFixed(1)}% da renda`,
+            target: 'Saudável: < 30% | Alerta: 30-40% | Elevado: > 40%',
+            status: debtPct <= 30 ? 'green' : debtPct <= 40 ? 'yellow' : 'red',
+            desc: debtPct <= 30 ? 'Comprometimento de crédito em faixa segura.' : debtPct <= 40 ? 'Faixa de atenção! Dívidas e parcelamentos começam a apertar o caixa.' : 'Nível elevado de endividamento! Risco considerável para o orçamento.'
+          },
+          {
+            key: 'reserve',
+            title: 'Reserva de Emergência Coberta',
+            value: `${monthsCovered.toFixed(1)} meses de gastos`,
+            target: 'Ideal: 3 a 6 meses (ou 6+ para autônomos)',
+            status: monthsCovered >= 6 ? 'green' : monthsCovered >= 3 ? 'yellow' : 'red',
+            desc: monthsCovered >= 6 ? 'Sua retaguarda financeira está sólida e segura contra imprevistos.' : monthsCovered >= 3 ? 'Reserva em formação razoável. Busque completar ao menos 6 meses.' : 'Reserva insuficiente ou não informada. Priorize acumular 3 a 6 meses de despesas.'
+          }
+        ];
+
+        const healthyCount = indicators.filter(i => i.status === 'green').length;
+
+        // Alertas próprios do app
+        const recurringPct = totalIncome > 0 ? (recurringExpenses / totalIncome) * 100 : 0;
+        const totalGoalsCount = categories.filter(c => !c.isIncome && !c.isSystem).length;
+        const safeGoalsWithinLimit = categories.filter(c => {
+          if (c.isIncome || c.isSystem) return false;
+          const spent = monthTransactions.filter(t => t.type === 'expense' && t.category === c.name).reduce((a, b) => a + b.amount, 0);
+          return c.limit > 0 && spent <= c.limit;
+        }).length;
+
+        return {
+          totalIncome,
+          totalNeeds,
+          totalWants,
+          totalDebts,
+          savingsRate,
+          needsPct,
+          wantsPct,
+          debtPct,
+          monthsCovered,
+          feeExpenses,
+          recurringExpenses,
+          recurringPct,
+          totalGoalsCount,
+          safeGoalsWithinLimit,
+          indicators,
+          healthyCount
+        };
+      }, [transactions, categories, monthTransactions, currentEmergencyReserve, totals]);
+
+      const handleExportHealthReportPDF = () => {
+        window.print();
+      };
+
       const renderTransactionRow = (t, hideCategoryColumn = false) => {
         const paid = isTxPaid(t);
         const isDueToday = !paid && t.type === 'expense' && t.date === todayStr && isEligibleForDueAlert(t);
@@ -2504,7 +3367,7 @@
                 </span>
               </button>
             </td>
-            <td class="py-3 px-4 w-32 text-slate-600 font-medium whitespace-nowrap tabular-nums">{formatDateBR(t.date)}</td>
+            <td class="py-3 px-4 w-32 text-slate-600 font-medium whitespace-nowrap">{formatDateBR(t.date)}</td>
             <td class="py-3 px-4 font-medium">
               <div class="flex flex-wrap items-center gap-1.5">
                 <span class={!paid ? 'text-slate-600' : 'text-slate-900'}>{t.description}</span>
@@ -2737,8 +3600,6 @@
       }
 
       const userLabel = user.displayName || user.email?.split('@')[0] || 'Usuário';
-      const [selYearNum, selMonthNum] = selectedMonth.split('-').map(Number);
-      const currentYM = todayStr.slice(0, 7);
 
       return (
         <div class="min-h-screen flex flex-col">
@@ -2760,111 +3621,9 @@
                 </div>
               </div>
 
-              {/* Seletor de Mês Customizado (abre ao clicar em qualquer lugar do nome do mês) e Botões de Ação */}
+              {/* Seletor de Mês e Botões de Ação */}
               <div class="flex items-center space-x-2 sm:space-x-3">
-                <div class="relative" ref={monthPickerRef}>
-                  <div class="flex items-center bg-slate-100 rounded-xl border border-slate-200 p-0.5 shadow-xs">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedMonth(prev => addMonthsToYM(prev, -1))}
-                      class="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-white rounded-lg transition"
-                      title="Mês anterior"
-                    >
-                      <i data-lucide="chevron-left" class="w-4 h-4"></i>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPickerYear(selYearNum);
-                        setIsMonthPickerOpen(prev => !prev);
-                      }}
-                      class="flex items-center space-x-2 px-2.5 sm:px-3 py-1 rounded-lg hover:bg-white text-xs sm:text-sm font-bold text-slate-800 transition cursor-pointer"
-                      title="Clique para selecionar o mês e o ano"
-                    >
-                      <i data-lucide="calendar" class="w-4 h-4 text-emerald-600 shrink-0"></i>
-                      <span>
-                        {MONTH_NAMES_FULL[(selMonthNum || 1) - 1]} <span class="text-slate-400 font-normal">/</span> <span class="text-emerald-700">{selYearNum}</span>
-                      </span>
-                      <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-slate-400"></i>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setSelectedMonth(prev => addMonthsToYM(prev, 1))}
-                      class="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-white rounded-lg transition"
-                      title="Próximo mês"
-                    >
-                      <i data-lucide="chevron-right" class="w-4 h-4"></i>
-                    </button>
-                  </div>
-
-                  {isMonthPickerOpen && (
-                    <div class="absolute right-0 sm:left-1/2 sm:-translate-x-1/2 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-200 p-4 z-50 space-y-3">
-                      <div class="flex items-center justify-between border-b border-slate-100 pb-2">
-                        <button
-                          type="button"
-                          onClick={() => setPickerYear(y => y - 1)}
-                          class="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600"
-                          title="Ano anterior"
-                        >
-                          <i data-lucide="chevron-left" class="w-4 h-4"></i>
-                        </button>
-                        <span class="font-extrabold text-sm text-slate-800">{pickerYear}</span>
-                        <button
-                          type="button"
-                          onClick={() => setPickerYear(y => y + 1)}
-                          class="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600"
-                          title="Próximo ano"
-                        >
-                          <i data-lucide="chevron-right" class="w-4 h-4"></i>
-                        </button>
-                      </div>
-
-                      <div class="grid grid-cols-3 gap-1.5">
-                        {MONTH_NAMES_SHORT.map((mLabel, idx) => {
-                          const targetYM = `${pickerYear}-${String(idx + 1).padStart(2, '0')}`;
-                          const isSelected = targetYM === selectedMonth;
-                          const isCurrent = targetYM === currentYM;
-                          return (
-                            <button
-                              key={mLabel}
-                              type="button"
-                              onClick={() => {
-                                setSelectedMonth(targetYM);
-                                setIsMonthPickerOpen(false);
-                              }}
-                              class={`py-2 rounded-xl text-xs font-bold transition ${
-                                isSelected
-                                  ? 'bg-emerald-600 text-white shadow-sm'
-                                  : isCurrent
-                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
-                                    : 'text-slate-700 hover:bg-slate-100'
-                              }`}
-                            >
-                              {mLabel}
-                            </button>
-                          );
-                        })}
-                      </div>
-
-                      <div class="pt-2 border-t border-slate-100 flex justify-between items-center">
-                        <span class="text-[11px] text-slate-400">Navegação rápida</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedMonth(currentYM);
-                            setPickerYear(Number(currentYM.slice(0, 4)));
-                            setIsMonthPickerOpen(false);
-                          }}
-                          class="text-xs font-bold text-emerald-600 hover:text-emerald-700 hover:underline"
-                        >
-                          Mês Atual
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                <MonthSelector value={selectedMonth} onChange={setSelectedMonth} />
 
                 {/* Botão de Sino */}
                 <button
@@ -2973,7 +3732,8 @@
               {[
                 { id: 'dashboard', label: 'Dashboard & Gráficos', icon: 'pie-chart' },
                 { id: 'transactions', label: `Transações (${filteredMonthTransactions.length})`, icon: 'receipt' },
-                { id: 'goals', label: 'Metas & Orçamento', icon: 'target' }
+                { id: 'goals', label: 'Metas & Orçamento', icon: 'target' },
+                { id: 'health', label: 'Saúde Financeira', icon: 'activity' }
               ].map(tab => (
                 <button
                   key={tab.id}
@@ -2988,8 +3748,12 @@
           </div>
 
           {saveStatus !== 'idle' && (
-            <div class={`fixed bottom-4 right-4 z-50 px-3 py-2 rounded-xl text-xs font-semibold shadow-lg ${saveStatus === 'error' ? 'bg-red-600 text-white' : saveStatus === 'saving' ? 'bg-slate-800 text-white' : 'bg-emerald-600 text-white'}`}>
-              {saveStatus === 'saving' ? 'Salvando…' : saveStatus === 'saved' ? 'Salvo ✓' : 'Falha ao salvar — verifique a conexão e tente de novo'}
+            <div class={`fixed bottom-4 right-4 z-50 px-3.5 py-2.5 rounded-xl text-xs font-semibold shadow-lg max-w-sm ${saveStatus === 'error' ? 'bg-red-600 text-white' : saveStatus === 'saving' ? 'bg-slate-800 text-white' : 'bg-emerald-600 text-white'}`}>
+              {saveStatus === 'saving'
+                ? 'Salvando…'
+                : saveStatus === 'saved'
+                  ? 'Salvo ✓'
+                  : `Falha ao salvar${saveErrorDetail ? ` (${saveErrorDetail})` : ''} — verifique a conexão e tente de novo`}
             </div>
           )}
 
@@ -3083,7 +3847,23 @@
             )}
 
             {activeTab === 'dashboard' && (
-              <div class="space-y-8">
+              <div class="space-y-6">
+                <MarketTickerStrip
+                  assets={marketAssets}
+                  onUpdateAssets={(nextAssets) => {
+                    setMarketAssets(nextAssets);
+                    saveDataToFirestore(
+                      transactions,
+                      categories,
+                      customRules,
+                      recurringMerchants,
+                      unpaidInvoiceReminder,
+                      defaultInvoiceDay,
+                      nextAssets
+                    );
+                  }}
+                />
+
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
                   <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                     <div class="flex items-center justify-between">
@@ -3135,29 +3915,76 @@
                   <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                     <div class="flex items-center justify-between gap-2 mb-3">
                       <h3 class="font-bold text-slate-800">Saúde do orçamento</h3>
-                      <span class="text-[11px] font-semibold text-slate-400">Teto de Despesas</span>
+                      <div class="inline-flex bg-slate-100 p-0.5 rounded-xl border border-slate-200 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setBudgetHealthMode('planned')}
+                          class={`px-2 py-1 rounded-lg text-[11px] font-bold transition ${
+                            budgetHealthMode === 'planned'
+                              ? 'bg-white text-emerald-700 shadow-sm'
+                              : 'text-slate-500 hover:text-slate-700'
+                          }`}
+                          title="Compara os gastos do mês com o teto das metas definidas"
+                        >
+                          Planejado
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setBudgetHealthMode('executed')}
+                          class={`px-2 py-1 rounded-lg text-[11px] font-bold transition ${
+                            budgetHealthMode === 'executed'
+                              ? 'bg-white text-indigo-700 shadow-sm'
+                              : 'text-slate-500 hover:text-slate-700'
+                          }`}
+                          title="Compara os gastos do mês com o total de receitas do mês"
+                        >
+                          Executado
+                        </button>
+                      </div>
                     </div>
 
-                    {insights.budget > 0 ? (
-                      <div>
-                        <div class="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
-                          <div
-                            class={`h-full transition-all duration-300 ${insights.budgetPct >= 100 ? 'bg-red-500' : insights.budgetPct > 75 ? 'bg-amber-500' : 'bg-emerald-500'}`}
-                            style={{ width: `${Math.min(100, insights.budgetPct)}%` }}
-                          ></div>
+                    {budgetHealthMode === 'planned' ? (
+                      insights.budget > 0 ? (
+                        <div>
+                          <div class="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
+                            <div
+                              class={`h-full transition-all duration-300 ${insights.budgetPct >= 100 ? 'bg-red-500' : insights.budgetPct > 75 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                              style={{ width: `${Math.min(100, insights.budgetPct)}%` }}
+                            ></div>
+                          </div>
+                          <p class="text-sm text-slate-600 mt-3 tabular-nums">{brl(insights.budgetedSpent)} de {brl(insights.budget)} ({insights.budgetPct.toFixed(0)}%)</p>
+                          <p class={`text-xs mt-1 font-medium ${insights.budgetLeft < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                            {insights.budgetLeft < 0
+                              ? `Acima do orçamento em ${brl(-insights.budgetLeft)}`
+                              : `Ainda cabem ${brl(insights.budgetLeft)}${insights.daysLeft > 0 ? ` (≈ ${brl(insights.budgetLeft / insights.daysLeft)}/dia)` : ''}`}
+                          </p>
                         </div>
-                        <p class="text-sm text-slate-600 mt-3 tabular-nums">{brl(insights.budgetedSpent)} de {brl(insights.budget)} ({insights.budgetPct.toFixed(0)}%)</p>
-                        <p class={`text-xs mt-1 font-medium ${insights.budgetLeft < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                          {insights.budgetLeft < 0
-                            ? `Acima do orçamento em ${brl(-insights.budgetLeft)}`
-                            : `Ainda cabem ${brl(insights.budgetLeft)}${insights.daysLeft > 0 ? ` (≈ ${brl(insights.budgetLeft / insights.daysLeft)}/dia)` : ''}`}
-                        </p>
-                      </div>
+                      ) : (
+                        <p class="text-sm text-slate-400">Defina metas na aba Metas &amp; Orçamento.</p>
+                      )
                     ) : (
-                      <p class="text-sm text-slate-400">Defina metas na aba Metas &amp; Orçamento.</p>
+                      insights.totalIncome > 0 ? (
+                        <div>
+                          <div class="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
+                            <div
+                              class={`h-full transition-all duration-300 ${insights.incomeUsedPct >= 100 ? 'bg-red-500' : insights.incomeUsedPct > 80 ? 'bg-amber-500' : 'bg-indigo-500'}`}
+                              style={{ width: `${Math.min(100, insights.incomeUsedPct)}%` }}
+                            ></div>
+                          </div>
+                          <p class="text-sm text-slate-600 mt-3 tabular-nums">{brl(insights.budgetedSpent)} de {brl(insights.totalIncome)} ({insights.incomeUsedPct.toFixed(0)}% da receita)</p>
+                          <p class={`text-xs mt-1 font-medium ${insights.incomeLeft < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                            {insights.incomeLeft < 0
+                              ? `Gastos superam as receitas em ${brl(-insights.incomeLeft)}`
+                              : `Saldo livre sobre receitas: ${brl(insights.incomeLeft)}${insights.daysLeft > 0 ? ` (≈ ${brl(insights.incomeLeft / insights.daysLeft)}/dia)` : ''}`}
+                          </p>
+                        </div>
+                      ) : (
+                        <p class="text-sm text-slate-400">Nenhuma receita lançada neste mês para comparar.</p>
+                      )
                     )}
 
-                    {insights.prevCons > 0 && (() => { const d = ((insights.budgetedSpent - insights.prevCons) / insights.prevCons) * 100; return (<p class="text-xs text-slate-500 mt-3">Consumo vs. mês anterior: <strong class={d <= 0 ? 'text-emerald-600' : 'text-red-600'}>{d > 0 ? '+' : ''}{d.toFixed(0)}%</strong></p>); })()}
+                    {insights.savingsRate !== null && (<p class="text-xs text-slate-500 mt-3">Taxa de poupança: <strong class={insights.savingsRate >= 0 ? 'text-emerald-600' : 'text-red-600'}>{insights.savingsRate.toFixed(0)}%</strong> da receita do mês</p>)}
+                    {insights.prevCons > 0 && (() => { const d = ((insights.budgetedSpent - insights.prevCons) / insights.prevCons) * 100; return (<p class="text-xs text-slate-500 mt-1">Consumo vs. mês anterior: <strong class={d <= 0 ? 'text-emerald-600' : 'text-red-600'}>{d > 0 ? '+' : ''}{d.toFixed(0)}%</strong></p>); })()}
                   </div>
                   <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                     <h3 class="font-bold text-slate-800 mb-3">Metas em atenção</h3>
@@ -3250,28 +4077,6 @@
                   </div>
 
                   <div class="flex flex-wrap items-center gap-2 sm:gap-3 w-full lg:w-auto">
-                    {/* Campo de Pesquisa por Palavra-Chave */}
-                    <div class="relative flex-1 sm:flex-initial sm:w-64">
-                      <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
-                      <input
-                        type="text"
-                        value={searchQuery}
-                        onChange={e => setSearchQuery(e.target.value)}
-                        placeholder="Pesquisar lançamento..."
-                        class="w-full pl-9 pr-8 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-700 placeholder-slate-400 focus:bg-white focus:border-emerald-500 outline-none transition"
-                      />
-                      {searchQuery && (
-                        <button
-                          type="button"
-                          onClick={() => setSearchQuery('')}
-                          class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold"
-                          title="Limpar pesquisa"
-                        >
-                          ✕
-                        </button>
-                      )}
-                    </div>
-
                     <button
                       type="button"
                       onClick={() => setShowCardPurchases(prev => !prev)}
@@ -3317,6 +4122,27 @@
                       </button>
                     </div>
 
+                    <div class="relative flex items-center bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 focus-within:border-emerald-500 focus-within:bg-white transition w-full sm:w-56">
+                      <i data-lucide="search" class="w-4 h-4 text-slate-400 shrink-0 mr-2"></i>
+                      <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={e => setSearchQuery(e.target.value)}
+                        placeholder="Pesquisar lançamento..."
+                        class="bg-transparent text-xs sm:text-sm font-medium text-slate-700 placeholder-slate-400 outline-none w-full"
+                      />
+                      {searchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => setSearchQuery('')}
+                          class="text-slate-400 hover:text-slate-600 ml-1 text-xs font-bold"
+                          title="Limpar pesquisa"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+
                     <div class="flex items-center space-x-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
                       <i data-lucide="filter" class="w-4 h-4 text-slate-400"></i>
                       <select 
@@ -3344,7 +4170,7 @@
 
                 {transactionViewMode === 'date' ? (
                   <div class="overflow-x-auto">
-                    <table class="w-full min-w-[780px] table-fixed text-left border-collapse">
+                    <table class="w-full text-left border-collapse">
                       <thead>
                         <tr class="border-b border-slate-200 text-slate-400 text-xs font-semibold uppercase">
                           <th class="py-3 px-4 w-36">Status</th>
@@ -3392,7 +4218,7 @@
                                   {group.items.length} {group.items.length === 1 ? 'item' : 'itens'}
                                 </span>
                               </div>
-                              <div class="flex items-center space-x-3 text-sm font-bold tabular-nums">
+                              <div class="flex items-center space-x-3 text-sm font-bold">
                                 {group.totalIncome > 0 && (
                                   <span class="text-emerald-600">+ R$ {group.totalIncome.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                                 )}
@@ -3408,7 +4234,14 @@
                             </div>
 
                             <div class="overflow-x-auto">
-                              <table class="w-full min-w-[680px] table-fixed text-left border-collapse">
+                              <table class="w-full text-left border-collapse table-fixed min-w-[720px]">
+                                <colgroup>
+                                  <col class="w-36" />
+                                  <col class="w-32" />
+                                  <col />
+                                  <col class="w-36" />
+                                  <col class="w-44" />
+                                </colgroup>
                                 <tbody class="divide-y text-sm">
                                   {group.items.map(t => renderTransactionRow(t, true))}
                                 </tbody>
@@ -3449,6 +4282,136 @@
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {activeTab === 'health' && (
+              <div class="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm space-y-8">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b pb-5">
+                  <div>
+                    <h3 class="font-extrabold text-slate-900 text-xl">Relatório de Saúde Financeira</h3>
+                    <p class="text-xs text-slate-500 mt-0.5">
+                      Diagnóstico baseado em literatura de planejamento (Regra 50/30/20, endividamento e reserva de emergência).
+                    </p>
+                  </div>
+                  <div class="flex items-center space-x-3">
+                    <button
+                      type="button"
+                      onClick={handleExportHealthReportPDF}
+                      class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2.5 rounded-xl text-xs font-bold flex items-center space-x-2 transition print:hidden"
+                      title="Imprimir ou Salvar relatório em PDF"
+                    >
+                      <i data-lucide="printer" class="w-4 h-4"></i>
+                      <span>Exportar Relatório (PDF)</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Resumo de Indicadores Saudáveis */}
+                <div class="bg-slate-50 border border-slate-200 rounded-2xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div class="flex items-center space-x-3.5">
+                    <div class={`w-12 h-12 rounded-2xl flex items-center justify-center text-white font-extrabold text-lg shadow-sm ${healthData.healthyCount >= 4 ? 'bg-emerald-600' : healthData.healthyCount >= 2 ? 'bg-amber-500' : 'bg-red-600'}`}>
+                      {healthData.healthyCount}/5
+                    </div>
+                    <div>
+                      <p class="text-sm font-bold text-slate-900">
+                        {healthData.healthyCount >= 4 ? 'Excelente Saúde Financeira' : healthData.healthyCount >= 2 ? 'Saúde Financeira com Pontos de Atenção' : 'Orçamento em Situação Crítica'}
+                      </p>
+                      <p class="text-xs text-slate-500">
+                        {healthData.healthyCount} de 5 indicadores fundamentais estão dentro das faixas recomendadas pela literatura.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Campo de Reserva de Emergência Atual */}
+                  <div class="bg-white border border-slate-200 p-3.5 rounded-xl flex items-center space-x-3 shrink-0 w-full sm:w-auto">
+                    <div>
+                      <label class="block text-[11px] font-bold text-slate-500 uppercase">Reserva Acumulada (R$)</label>
+                      <input
+                        type="number"
+                        step="100"
+                        value={currentEmergencyReserve || ''}
+                        onChange={e => {
+                          const val = parseFloat(e.target.value) || 0;
+                          setCurrentEmergencyReserve(val);
+                          saveDataToFirestore(
+                            transactions,
+                            categories,
+                            customRules,
+                            recurringMerchants,
+                            unpaidInvoiceReminder,
+                            defaultInvoiceDay,
+                            marketAssets,
+                            val
+                          );
+                        }}
+                        placeholder="Ex: 15000,00"
+                        class="w-40 border rounded-lg p-1.5 text-sm font-bold text-slate-800 bg-slate-50 mt-1"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Grid de Indicadores (Semáforo) */}
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {healthData.indicators.map(ind => {
+                    const statusColor = ind.status === 'green'
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                      : ind.status === 'yellow'
+                        ? 'bg-amber-50 text-amber-900 border-amber-200'
+                        : 'bg-rose-50 text-rose-900 border-rose-200';
+                    const badgeColor = ind.status === 'green'
+                      ? 'bg-emerald-500'
+                      : ind.status === 'yellow'
+                        ? 'bg-amber-500'
+                        : 'bg-rose-500';
+
+                    return (
+                      <div key={ind.key} class={`border rounded-2xl p-5 flex flex-col justify-between space-y-3 ${statusColor}`}>
+                        <div class="space-y-1">
+                          <div class="flex items-center justify-between">
+                            <span class="text-xs font-bold uppercase tracking-wider opacity-75">{ind.title}</span>
+                            <span class={`w-3 h-3 rounded-full ${badgeColor}`} title={`Status: ${ind.status}`}></span>
+                          </div>
+                          <p class="text-2xl font-black tabular-nums">{ind.value}</p>
+                        </div>
+                        <div class="space-y-1.5 pt-2 border-t border-current/10">
+                          <p class="text-xs font-semibold opacity-90">🎯 {ind.target}</p>
+                          <p class="text-xs opacity-80 leading-relaxed">{ind.desc}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Alertas Próprios do App */}
+                <div class="border border-slate-200 rounded-2xl p-6 space-y-4 bg-slate-50/60">
+                  <h4 class="font-bold text-slate-800 text-base">Análise Complementar &amp; Alertas do CaixaUm</h4>
+                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-1">
+                      <span class="text-xs font-semibold text-slate-400">Tarifas, Juros e Multas</span>
+                      <p class="text-xl font-bold text-red-600">R$ {healthData.feeExpenses.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                      <p class="text-[11px] text-slate-500">Valores pagos "de graça" ao sistema financeiro este mês.</p>
+                    </div>
+
+                    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-1">
+                      <span class="text-xs font-semibold text-slate-400">Peso das Assinaturas</span>
+                      <p class="text-xl font-bold text-indigo-600">{healthData.recurringPct.toFixed(1)}% <span class="text-xs font-normal text-slate-500">da renda</span></p>
+                      <p class="text-[11px] text-slate-500">Comprometimento mensal com serviços recorrentes e streaming.</p>
+                    </div>
+
+                    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-1">
+                      <span class="text-xs font-semibold text-slate-400">Metas Dentro do Teto</span>
+                      <p class="text-xl font-bold text-emerald-600">{healthData.safeGoalsWithinLimit} de {healthData.totalGoalsCount}</p>
+                      <p class="text-[11px] text-slate-500">Categorias de gastos que respeitaram o limite definido.</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Referências e Nota Explicativa */}
+                <div class="text-[11px] text-slate-400 leading-relaxed pt-2 border-t border-slate-100">
+                  <strong>Nota Metodológica:</strong> Os diagnósticos acima baseiam-se em diretrizes clássicas de planejamento financeiro pessoal (como a regra 50/30/20 de Elizabeth Warren e parâmetros de endividamento da literatura de crédito). Este relatório tem caráter estritamente informativo e educacional, não constituindo recomendação formal de investimentos ou consultoria profissional.
+                </div>
               </div>
             )}
 
@@ -4223,10 +5186,13 @@
                         value={formData.date}
                         onChange={e => {
                           const newDate = e.target.value;
+                          const isCard = formData.paymentMethod === 'Cartão de Crédito';
                           setFormData({
                             ...formData,
                             date: newDate,
-                            isPaid: editingId ? formData.isPaid : computeDefaultIsPaid(newDate, formData.recurrenceType, formData.installmentStartOffset)
+                            isPaid: isCard
+                              ? (newDate <= getLocalTodayStr() ? formData.isPaid : false)
+                              : computeDefaultIsPaid(newDate, formData.recurrenceType, formData.installmentStartOffset)
                           });
                         }}
                         class="w-full border rounded-xl p-2.5 text-sm"
@@ -4246,11 +5212,9 @@
                           ...formData,
                           paymentMethod: pm,
                           installmentStartOffset: nextOffset,
-                          isPaid: editingId
-                            ? formData.isPaid
-                            : isCardNow
-                              ? false
-                              : computeDefaultIsPaid(formData.date, formData.recurrenceType, nextOffset)
+                          isPaid: isCardNow
+                            ? (formData.date <= getLocalTodayStr() ? (editingId ? formData.isPaid : false) : false)
+                            : computeDefaultIsPaid(formData.date, formData.recurrenceType, nextOffset)
                         });
                       }}
                       class="w-full border rounded-xl p-2.5 text-sm font-medium text-slate-700"
@@ -4642,14 +5606,14 @@
                   </div>
 
                   <div class="grid grid-cols-1 sm:grid-cols-12 gap-3">
-                    <div class="sm:col-span-6">
+                    <div class="sm:col-span-5">
                       <label class="block text-[11px] font-semibold text-slate-600 mb-1">Nome</label>
                       <input
                         type="text"
                         required
                         value={categoryFormData.name}
                         onChange={e => setCategoryFormData({ ...categoryFormData, name: e.target.value })}
-                        placeholder="Ex: Pet, Educação, Casa"
+                        placeholder="Ex: Reembolso Empresa, Pet"
                         class="w-full border rounded-xl p-2 text-sm bg-white"
                       />
                     </div>
@@ -4662,19 +5626,46 @@
                         class="w-full h-9 border rounded-xl p-1 cursor-pointer bg-white"
                       />
                     </div>
-                    <div class="sm:col-span-4">
+                    <div class="sm:col-span-5">
+                      <label class="block text-[11px] font-semibold text-slate-600 mb-1">Tipo (Saúde Financeira)</label>
+                      <select
+                        value={categoryFormData.type}
+                        onChange={e => setCategoryFormData({ ...categoryFormData, type: e.target.value })}
+                        class="w-full border rounded-xl p-2 text-xs font-bold text-slate-700 bg-white"
+                      >
+                        <option value="necessidade">Necessidade (Essencial)</option>
+                        <option value="desejo">Desejo (Estilo de Vida)</option>
+                        <option value="divida">Dívida / Financiamento</option>
+                        <option value="poupanca">Poupança / Investimento</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div class="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                    <div class="sm:col-span-6">
                       <label class="block text-[11px] font-semibold text-slate-600 mb-1">Meta Mensal (R$)</label>
                       <input
                         type="number"
                         step="50"
-                        value={categoryFormData.limit}
+                        disabled={categoryFormData.isIncome}
+                        value={categoryFormData.isIncome ? 0 : categoryFormData.limit}
                         onChange={e => setCategoryFormData({ ...categoryFormData, limit: e.target.value })}
-                        class="w-full border rounded-xl p-2 text-sm bg-white"
+                        class="w-full border rounded-xl p-2 text-sm bg-white disabled:bg-slate-100"
                       />
                     </div>
                   </div>
 
-                  <div class="flex justify-end pt-1">
+                  <div class="flex items-center justify-between pt-1">
+                    <label class="flex items-center space-x-2 text-xs text-slate-600 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={categoryFormData.isIncome}
+                        onChange={e => setCategoryFormData({ ...categoryFormData, isIncome: e.target.checked, limit: e.target.checked ? 0 : (categoryFormData.limit || 1000) })}
+                        class="rounded text-emerald-600 focus:ring-emerald-500"
+                      />
+                      <span>Categoria de Receita / Entrada</span>
+                    </label>
+
                     <button
                       type="submit"
                       class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-xs transition shadow-sm"
@@ -4685,7 +5676,7 @@
                 </form>
 
                 <div class="space-y-2 max-h-64 overflow-y-auto pr-1 custom-scrollbar">
-                  {categories.filter(cat => !cat.isIncome).map(cat => {
+                  {categories.map(cat => {
                     const txCount = transactions.filter(t => t.category === cat.name).length;
                     const isProtected = cat.isSystem || cat.id === 'cat_6';
                     const isBeingEdited = editingCategoryId === cat.id;
@@ -4702,13 +5693,19 @@
                           <div>
                             <div class="flex items-center space-x-2">
                               <span class="font-semibold text-sm text-slate-800">{cat.name}</span>
+                              {cat.isIncome && (
+                                <span class="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-1.5 py-0.5 rounded">Receita</span>
+                              )}
+                              <span class="bg-slate-100 text-slate-600 text-[10px] font-bold px-1.5 py-0.5 rounded capitalize">
+                                {cat.type || 'necessidade'}
+                              </span>
                               {cat.isSystem && (
                                 <span class="bg-indigo-100 text-indigo-700 text-[10px] font-bold px-1.5 py-0.5 rounded">Sistema</span>
                               )}
                             </div>
                             <span class="text-[11px] text-slate-400">
                               {txCount} {txCount === 1 ? 'lançamento' : 'lançamentos'}
-                              {!cat.isSystem && ` • Meta: R$ ${(cat.limit || 0).toLocaleString('pt-BR')}`}
+                              {!cat.isIncome && !cat.isSystem && ` • Meta: R$ ${(cat.limit || 0).toLocaleString('pt-BR')}`}
                             </span>
                           </div>
                         </div>
