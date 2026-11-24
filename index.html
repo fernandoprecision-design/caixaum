@@ -1162,61 +1162,6 @@
       );
     }
 
-    function FlowChart({ transactions, categories, income }) {
-      const [hover, setHover] = useState(null);
-      const catByName = {}; categories.forEach(c => { catByName[c.name] = c; });
-      const sums = {};
-      transactions.forEach(t => {
-        if (t.type !== 'expense') return;
-        const c = catByName[t.category]; if (c && c.isIncome) return;
-        sums[t.category] = (sums[t.category] || 0) + t.amount;
-      });
-      let list = Object.entries(sums).map(([name, amount]) => ({ name, amount, color: catByName[name]?.color || '#64748B' })).sort((a, b) => b.amount - a.amount);
-      if (list.length > 7) { const rest = list.slice(7).reduce((a, b) => a + b.amount, 0); list = [...list.slice(0, 7), { name: 'Outras', amount: rest, color: '#9AA3A5' }]; }
-      const spent = list.reduce((a, b) => a + b.amount, 0);
-      if (income <= 0 && spent <= 0) return <p class="text-sm text-slate-400">Sem lançamentos neste mês.</p>;
-      const left = income - spent;
-      const rows = left > 0 ? [...list, { name: 'Sobra', amount: left, color: '#4C9F70' }] : list;
-      const total = Math.max(income, spent);
-      const H = 300, gap = 8, top = 28, x0 = 12, x1 = 430, xm = (x0 + x1) / 2;
-      const scale = (H - gap * (rows.length - 1)) / total;
-      const base = income > 0 ? income : spent;
-      let ly = top, ry = top;
-      const bands = rows.map(r => { const h = Math.max(2, r.amount * scale); const b = { ...r, h, ly, ry }; ly += h; ry += h + gap; return b; });
-      const leftH = Math.max(income, 0) * scale;
-      const deficitH = left < 0 ? -left * scale : 0;
-      const short = (s, n) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
-      return (
-        <div>
-          <svg viewBox={`0 0 700 ${top + H + 12}`} class="w-full h-auto" role="img" aria-label="Fluxo de caixa do mês: da receita para as categorias de gasto">
-            <text x="0" y="16" class="fill-current text-slate-700" style={{ fontSize: 12, fontWeight: 600 }}>Receita · {brl(income)}</text>
-            <rect x="0" y={top} width="12" height={leftH} rx="3" style={{ fill: 'var(--brand)' }} />
-            {deficitH > 0 && <rect x="0" y={top + leftH} width="12" height={deficitH} rx="3" fill="#C75C4E" />}
-            {bands.map((b, i) => {
-              const pctTxt = `${((b.amount / base) * 100).toFixed(0)}%`;
-              const cy = b.ry + b.h / 2;
-              return (
-                <g key={b.name} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} style={{ cursor: 'default' }}>
-                  <title>{b.name}: {brl(b.amount)} ({pctTxt})</title>
-                  <path d={`M${x0} ${b.ly} C${xm} ${b.ly} ${xm} ${b.ry} ${x1} ${b.ry} L${x1} ${b.ry + b.h} C${xm} ${b.ry + b.h} ${xm} ${b.ly + b.h} ${x0} ${b.ly + b.h} Z`} fill={b.color} fillOpacity={hover === i ? 0.7 : hover === null ? 0.38 : 0.15} style={{ transition: 'fill-opacity .15s' }} />
-                  <rect x={x1} y={b.ry} width="12" height={b.h} rx="3" fill={b.color} />
-                  {b.h >= 26 ? (
-                    <g>
-                      <text x={x1 + 22} y={cy - 2} class="fill-current text-slate-700" style={{ fontSize: 12, fontWeight: 600 }}>{short(b.name, 30)}</text>
-                      <text x={x1 + 22} y={cy + 13} class="fill-current text-slate-500" style={{ fontSize: 11 }}>{brl(b.amount)} · {pctTxt}</text>
-                    </g>
-                  ) : (
-                    <text x={x1 + 22} y={cy + 4} class="fill-current text-slate-700" style={{ fontSize: 11 }}>{short(b.name, 16)} · {brl(b.amount)} · {pctTxt}</text>
-                  )}
-                </g>
-              );
-            })}
-          </svg>
-          {left < 0 && <p class="text-xs font-semibold text-red-600 mt-2">Os gastos superaram a receita em {brl(-left)} neste mês (faixa vermelha).</p>}
-        </div>
-      );
-    }
-
     function App() {
       const [theme, setTheme] = useState(() => (document.documentElement.classList.contains('dark') ? 'dark' : 'light'));
       useEffect(() => {
@@ -4111,12 +4056,6 @@
                       ))}
                     </ul>
                   </div>
-                </div>
-
-                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                  <h3 class="font-bold text-slate-800 text-lg">Fluxo de caixa do mês</h3>
-                  <p class="text-[11px] text-slate-400 mb-4">Para onde foi, para onde vai: a espessura de cada faixa é proporcional ao valor.</p>
-                  <FlowChart transactions={monthTransactions} categories={categories} income={totals.realizedIncome + totals.pendingIncome} />
                 </div>
 
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
