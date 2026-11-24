@@ -543,7 +543,7 @@
       const barChartRef = useRef(null);
       const pieChartInstance = useRef(null);
       const barChartInstance = useRef(null);
-      const fixedCardDatesMigratedRef = useRef(false);
+      const fixedDatesMigratedRef = useRef(false);
 
       useEffect(() => {
         const onReady = () => setFbReady(true);
@@ -616,22 +616,26 @@
       }, [transactions, todayStr, recurringMerchants]);
 
       useEffect(() => {
-        if (!user || !transactions.length || fixedCardDatesMigratedRef.current) return;
+        if (!user || !transactions.length || fixedDatesMigratedRef.current) return;
 
         let changed = false;
         const updatedList = transactions.map(t => {
-          const isProjectedCardRec =
-            Boolean(t.isProjected) &&
-            (t.recurrenceType === 'fixed' || (t.description || '').includes('[Recorrente]')) &&
-            isCreditCardPurchase(t);
+          const isRecurringItem =
+            t.recurrenceType === 'fixed' ||
+            (t.description || '').includes('[Recorrente]') ||
+            String(t.id || '').startsWith('fatura_rec_') ||
+            String(t.id || '').startsWith('rec_man_');
 
-          if (!isProjectedCardRec) return t;
+          if (!isRecurringItem || !t.date) return t;
 
+          const [ty, tm, tdStr] = t.date.split('-');
+          const currentDay = parseInt(tdStr, 10);
           const baseMerchant = getBaseMerchantName(t.description);
-          const originTx = transactions
+
+          // Busca o lançamento âncora mais antigo da mesma série (por groupId ou estabelecimento/descrição)
+          const sameSeries = transactions
             .filter(other => {
-              if (other.id === t.id || other.isProjected) return false;
-              if (!isCreditCardPurchase(other)) return false;
+              if (!other.date) return false;
               if (t.groupId && other.groupId === t.groupId) return true;
               const otherMerchant = getBaseMerchantName(other.description);
               return (
@@ -640,15 +644,20 @@
                 (otherMerchant === baseMerchant || otherMerchant.includes(baseMerchant) || baseMerchant.includes(otherMerchant))
               );
             })
-            .sort((a, b) => a.date.localeCompare(b.date))[0];
+            .sort((a, b) => a.date.localeCompare(b.date));
 
-          if (!originTx || !originTx.date) return t;
+          if (sameSeries.length <= 1) return t;
 
-          const originDay = parseInt(originTx.date.split('-')[2], 10);
-          const [ty, tm, tdStr] = t.date.split('-');
-          const currentDay = parseInt(tdStr, 10);
+          // Preferir o âncora que NÃO caiu em dia 01 (ou o primeiro da série se todos forem dia 01)
+          const nonFirstAnchor = sameSeries.find(item => parseInt(item.date.split('-')[2], 10) !== 1);
+          const anchorTx = nonFirstAnchor || sameSeries[0];
 
-          if (originDay && currentDay !== originDay) {
+          if (!anchorTx || anchorTx.id === t.id) return t;
+
+          const originDay = parseInt(anchorTx.date.split('-')[2], 10);
+
+          // Corrige itens futuros não efetivados (ou que caíram indevidamente no dia 01) para o dia exato do âncora
+          if (originDay && originDay !== 1 && currentDay === 1 && !isTxPaid(t)) {
             const maxDays = new Date(parseInt(ty, 10), parseInt(tm, 10), 0).getDate();
             const clampedDay = String(Math.min(originDay, maxDays)).padStart(2, '0');
             const correctedDate = `${ty}-${tm}-${clampedDay}`;
@@ -661,7 +670,7 @@
           return t;
         });
 
-        fixedCardDatesMigratedRef.current = true;
+        fixedDatesMigratedRef.current = true;
         if (changed) {
           setTransactions(updatedList);
           saveDataToFirestore(updatedList, categories, customRules, recurringMerchants, unpaidInvoiceReminder);
@@ -836,7 +845,7 @@
           setCustomRules({});
           setRecurringMerchants([]);
           setUnpaidInvoiceReminder(null);
-          fixedCardDatesMigratedRef.current = false;
+          fixedDatesMigratedRef.current = false;
           return;
         }
         const { db, doc, onSnapshot } = window.FB;
@@ -1595,7 +1604,8 @@
 
       const parseRawLinesToItems = (rows, docType) => {
         const parsedItems = [];
-        const fallbackDate = docType === 'card_invoice' ? invoiceDueDate : `${selectedMonth}-01`;
+        const todayDayStr = getLocalTodayStr().split('-')[2];
+        const fallbackDate = docType === 'card_invoice' ? invoiceDueDate : `${selectedMonth}-${todayDayStr}`;
 
         rows.forEach((row, idx) => {
           const dateVal = normalizeDateString(row.date, fallbackDate);
@@ -2052,13 +2062,17 @@
           const totalInst = formData.installments || 2;
           const newGroupId = wasSingle && becameRecurringOrInst ? `grp_conv_${nowId()}` : oldTx?.groupId;
 
-          if (!wasSingle && oldTx?.groupId && (Math.abs(oldTx.amount - baseAmount) >= 0.01 || oldTx.category !== formData.category)) {
+          const oldDay = oldTx?.date ? parseInt(oldTx.date.split('-')[2], 10) : null;
+          const newDay = formData.date ? parseInt(formData.date.split('-')[2], 10) : null;
+          const dayChanged = oldDay && newDay && oldDay !== newDay;
+
+          if (!wasSingle && oldTx?.groupId && (Math.abs(oldTx.amount - baseAmount) >= 0.01 || oldTx.category !== formData.category || dayChanged)) {
             const futureSiblingsCount = transactions.filter(
               t => t.id !== editingId && t.groupId === oldTx.groupId && t.date >= oldTx.date
             ).length;
             if (futureSiblingsCount > 0) {
               propagateSeriesChanges = confirm(
-                `Existem ${futureSiblingsCount} lançamentos futuros nesta série.\nDeseja aplicar o novo valor (R$ ${baseAmount.toFixed(2)}) e categoria ("${formData.category}") também para os meses seguintes?`
+                `Existem ${futureSiblingsCount} lançamentos futuros nesta série.\nDeseja aplicar o novo valor (R$ ${baseAmount.toFixed(2)}), categoria ("${formData.category}")${dayChanged ? ` e dia de vencimento (dia ${String(newDay).padStart(2, '0')})` : ''} também para os meses seguintes?`
               );
             }
           }
@@ -2089,8 +2103,16 @@
               };
             }
             if (propagateSeriesChanges && t.groupId === oldTx.groupId && t.date >= oldTx.date) {
+              let nextSiblingDate = t.date;
+              if (dayChanged && newDay) {
+                const [sy, sm] = t.date.split('-');
+                const maxDays = new Date(parseInt(sy, 10), parseInt(sm, 10), 0).getDate();
+                const clamped = String(Math.min(newDay, maxDays)).padStart(2, '0');
+                nextSiblingDate = `${sy}-${sm}-${clamped}`;
+              }
               return {
                 ...t,
+                date: nextSiblingDate,
                 amount: baseAmount,
                 category: formData.category
               };
