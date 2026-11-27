@@ -76,6 +76,43 @@
     .ticker-wrapper:hover .animate-ticker {
       animation-play-state: paused;
     }
+    @media print {
+      html.dark body, body {
+        background: #ffffff !important;
+        color: #0f172a !important;
+      }
+      header,
+      .no-print,
+      [class*="fixed bottom-4"] {
+        display: none !important;
+      }
+      .print-tabs-bar {
+        display: none !important;
+      }
+      main {
+        padding: 0 !important;
+        margin: 0 !important;
+        max-width: 100% !important;
+      }
+      .print-transactions-card {
+        border: none !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+      }
+      .print-hide-controls {
+        display: none !important;
+      }
+      .print-show-summary {
+        display: block !important;
+      }
+      table {
+        break-inside: auto;
+      }
+      tr {
+        break-inside: avoid;
+        break-after: auto;
+      }
+    }
   </style>
 </head>
 <body class="bg-slate-50 text-slate-900">
@@ -3365,7 +3402,30 @@
         window.print();
       };
 
-      const renderTransactionRow = (t, hideCategoryColumn = false) => {
+      const getActiveFilterLabel = () => {
+        const labels = [];
+        if (selectedCategoryFilter !== 'ALL') {
+          const map = {
+            PENDING_ONLY: 'Somente Previstos / Pendentes',
+            PAID_ONLY: 'Somente Efetivados / Pagos',
+            INSTALLMENTS_ONLY: 'Somente Parcelados',
+            RECURRING_ONLY: 'Somente Assinaturas / Recorrentes',
+            CARD_PROJECTED_ONLY: 'Somente Projeções do Cartão'
+          };
+          labels.push(`Filtro: ${map[selectedCategoryFilter] || selectedCategoryFilter}`);
+        } else {
+          labels.push('Filtro: Todos os Lançamentos');
+        }
+        if (searchQuery.trim()) labels.push(`Busca: "${searchQuery.trim()}"`);
+        labels.push(transactionViewMode === 'category' ? 'Agrupado por Categoria' : 'Ordenado por Data');
+        return labels.join(' • ');
+      };
+
+      const handlePrintTransactionsReport = () => {
+        window.print();
+      };
+
+            const renderTransactionRow = (t, hideCategoryColumn = false) => {
         const paid = isTxPaid(t);
         const isDueToday = !paid && t.type === 'expense' && t.date === todayStr && isEligibleForDueAlert(t);
         const isCardProjected = Boolean(t.isProjected);
@@ -3776,7 +3836,7 @@
           </header>
 
           {/* Abas */}
-          <div class="bg-white border-b border-slate-200">
+          <div class="bg-white border-b border-slate-200 print-tabs-bar">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex space-x-8 overflow-x-auto whitespace-nowrap">
               {[
                 { id: 'dashboard', label: 'Dashboard & Gráficos', icon: 'pie-chart' },
@@ -4114,7 +4174,7 @@
             )}
 
             {activeTab === 'transactions' && (
-              <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
+              <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4 print-transactions-card">
                 <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
                   <div>
                     <h3 class="font-bold text-slate-800 text-lg">Extrato do Mês ({formatMonthBR(selectedMonth)})</h3>
@@ -4123,9 +4183,12 @@
                         ? `Exibindo todos os ${filteredMonthTransactions.length} lançamentos (incluindo compras e recorrentes do cartão).`
                         : `Exibindo ${filteredMonthTransactions.length} lançamentos de caixa/conta (${hiddenCardPurchasesCount} itens do cartão ocultos).`}
                     </p>
+                    <p class="hidden print-show-summary text-xs font-semibold text-slate-600 mt-1">
+                      {getActiveFilterLabel()} • Usuário: {userLabel}
+                    </p>
                   </div>
 
-                  <div class="flex flex-wrap items-center gap-2 sm:gap-3 w-full lg:w-auto">
+                  <div class="flex flex-wrap items-center gap-2 sm:gap-3 w-full lg:w-auto print-hide-controls">
                     <button
                       type="button"
                       onClick={() => setShowCardPurchases(prev => !prev)}
@@ -4213,6 +4276,16 @@
                     <button onClick={handleOpenImportModal} class="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center space-x-1.5 shrink-0 transition">
                       <i data-lucide="file-up" class="w-4 h-4"></i>
                       <span>Importar Arquivo</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handlePrintTransactionsReport}
+                      class="bg-slate-800 hover:bg-slate-900 text-white px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center space-x-1.5 shrink-0 transition shadow-xs"
+                      title="Abrir relatório para impressão ou salvar em PDF exatamente como está na tela"
+                    >
+                      <i data-lucide="printer" class="w-4 h-4"></i>
+                      <span>Relatório</span>
                     </button>
                   </div>
                 </div>
