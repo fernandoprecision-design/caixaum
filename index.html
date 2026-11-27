@@ -105,6 +105,17 @@
       .print-show-summary {
         display: block !important;
       }
+      .print-brand-header {
+        display: flex !important;
+        align-items: center;
+        justify-content: space-between;
+        padding-bottom: 12px;
+        margin-bottom: 14px;
+        border-bottom: 1px solid #e2e8f0;
+      }
+      .print-hide-banner {
+        display: none !important;
+      }
       table {
         break-inside: auto;
       }
@@ -3869,7 +3880,7 @@
           {/* Conteúdo */}
           <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
             {unpaidInvoiceReminder && unpaidInvoiceReminder.amount > 0 && (
-              <div class="bg-indigo-50 border border-indigo-200 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
+              <div class="bg-indigo-50 border border-indigo-200 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm print-hide-banner">
                 <div class="flex items-center space-x-3">
                   <div class="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0">
                     <i data-lucide="credit-card" class="w-5 h-5"></i>
@@ -3898,7 +3909,7 @@
             )}
 
             {dueTodayTransactions.length > 0 && (
-              <div class="bg-rose-50 border border-rose-300 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
+              <div class="bg-rose-50 border border-rose-300 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm print-hide-banner">
                 <div class="flex items-center space-x-3">
                   <div class="w-10 h-10 rounded-xl bg-rose-600 text-white flex items-center justify-center shrink-0 animate-pulse">
                     <i data-lucide="bell-ring" class="w-5 h-5"></i>
@@ -3932,7 +3943,7 @@
             )}
 
             {pastPendingTransactions.length > 0 && (
-              <div class="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
+              <div class="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm print-hide-banner">
                 <div class="flex items-center space-x-3">
                   <div class="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
                     <i data-lucide="clock" class="w-5 h-5"></i>
@@ -4175,6 +4186,21 @@
 
             {activeTab === 'transactions' && (
               <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4 print-transactions-card">
+                <div class="hidden print-brand-header">
+                  <div class="flex items-center space-x-3">
+                    <CaixaUmIcon className="w-9 h-9 shrink-0" />
+                    <div>
+                      <div class="text-lg font-extrabold tracking-tight text-slate-900 leading-tight">
+                        Caixa<span class="text-emerald-600">Um</span>
+                      </div>
+                      <div class="text-[11px] text-slate-500 font-medium">Controle financeiro inteligente</div>
+                    </div>
+                  </div>
+                  <div class="text-right text-xs text-slate-500">
+                    <div class="font-semibold text-slate-700">Relatório de Transações</div>
+                    <div>{formatDateBR(getLocalTodayStr())}</div>
+                  </div>
+                </div>
                 <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
                   <div>
                     <h3 class="font-bold text-slate-800 text-lg">Extrato do Mês ({formatMonthBR(selectedMonth)})</h3>
